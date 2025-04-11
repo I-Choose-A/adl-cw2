@@ -14,7 +14,7 @@ from models.unet import UNet
 from utils.loss import weighted_loss
 from utils.mask_utils import create_cam, get_cam, get_trimap
 
-device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 torch.manual_seed(2025)
 batch_size = 32
 
@@ -25,14 +25,34 @@ test_size = len(dataset) - train_size - val_size
 
 # In order to make the data in the CAM and batch match,
 # the data set is disrupted in advance and the Dataloader is loaded without disrupting the train_loader.
-train_dataset, val_dataset, test_dataset = random_split(dataset, [train_size, val_size, test_size])
+train_dataset, val_dataset, test_dataset = random_split(
+    dataset, [train_size, val_size, test_size]
+)
 
-train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True,
-                          persistent_workers=True)
-val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=4, pin_memory=True,
-                        persistent_workers=True)
-test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=4, pin_memory=True,
-                         persistent_workers=True)
+train_loader = DataLoader(
+    train_dataset,
+    batch_size=batch_size,
+    shuffle=True,
+    num_workers=4,
+    pin_memory=True,
+    persistent_workers=True,
+)
+val_loader = DataLoader(
+    val_dataset,
+    batch_size=batch_size,
+    shuffle=False,
+    num_workers=4,
+    pin_memory=True,
+    persistent_workers=True,
+)
+test_loader = DataLoader(
+    test_dataset,
+    batch_size=batch_size,
+    shuffle=False,
+    num_workers=4,
+    pin_memory=True,
+    persistent_workers=True,
+)
 
 resnet = ResNet18
 unet = UNet()
@@ -49,8 +69,8 @@ def train_classifier(model):
     for epoch in range(epochs):
         model.train()
 
-        train_correct = 0.
-        train_loss = 0.
+        train_correct = 0.0
+        train_loss = 0.0
         train_bar = tqdm(train_loader, desc=f"Epoch {epoch + 1}/{epochs} [Train]")
         for x, y, _ in train_bar:
             x = x.to(device)
@@ -72,8 +92,8 @@ def train_classifier(model):
 
         # evaluation on val dataset
         model.eval()
-        val_correct = 0.
-        val_loss = 0.
+        val_correct = 0.0
+        val_loss = 0.0
         val_bar = tqdm(val_loader, desc=f"Epoch {epoch + 1}/{epochs} [Val]")
         for x, y, _ in val_bar:
             x = x.to(device)
@@ -89,8 +109,10 @@ def train_classifier(model):
 
         train_bar.clear()
         val_bar.clear()
-        tqdm.write(f"EPOCH: {epoch + 1}/{epochs}, train_loss: {train_loss}, train_acc: {train_acc * 100:.2f}% "
-                   f"val_loss: {val_loss}, val_acc: {val_acc * 100:.2f}%")
+        tqdm.write(
+            f"EPOCH: {epoch + 1}/{epochs}, train_loss: {train_loss}, train_acc: {train_acc * 100:.2f}% "
+            f"val_loss: {val_loss}, val_acc: {val_acc * 100:.2f}%"
+        )
 
     torch.save(model.state_dict(), "models/resnet18.pth")
 
@@ -103,7 +125,7 @@ def train_unet(model):
     model = model.to(device)
 
     for epoch in range(epochs):
-        train_loss = 0.
+        train_loss = 0.0
         train_bar = tqdm(train_loader, desc=f"Epoch {epoch + 1}/{epochs} [Train]")
         for x, _, image_ids in train_bar:
             x = x.to(device)
@@ -122,7 +144,6 @@ def train_unet(model):
             #     mask = (1 - alpha) * cam + alpha * model(x).detach()
             # mask = torch.clamp(mask, 0, 1)
 
-
             pred_mask = model(x)
             loss = weighted_loss(pred_mask, mask)
 
@@ -134,8 +155,8 @@ def train_unet(model):
 
         # evaluation
         model.eval()
-        val_loss = 0.
-        val_iou = 0.
+        val_loss = 0.0
+        val_iou = 0.0
         val_bar = tqdm(val_loader, desc=f"Epoch {epoch + 1}/{epochs} [Val]")
         for x, _, image_ids in val_bar:
             x = x.to(device)
@@ -159,7 +180,9 @@ def train_unet(model):
 
         train_bar.clear()
         val_bar.clear()
-        tqdm.write(f"EPOCH: {epoch + 1}/{epochs}, train_loss: {train_loss}, val_loss: {val_loss}, val_iou:{val_iou}")
+        tqdm.write(
+            f"EPOCH: {epoch + 1}/{epochs}, train_loss: {train_loss}, val_loss: {val_loss}, val_iou:{val_iou}"
+        )
 
     torch.save(model.state_dict(), "models/unet.pth")
 
@@ -175,7 +198,7 @@ def denormalize(tensor, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]):
     return tensor.clamp_(0, 1)  # 裁剪到[0,1]范围
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     if not os.path.exists("models/resnet18.pth"):
         train_classifier(resnet)
     else:
@@ -188,7 +211,7 @@ if __name__ == '__main__':
                 create_cam(resnet, x, y, ids)
 
     # clear cache to provide more space for training UNet
-    resnet = resnet.to('cpu')
+    resnet = resnet.to("cpu")
     torch.cuda.empty_cache()
 
     if not os.path.exists("models/unet.pth"):
@@ -200,9 +223,9 @@ if __name__ == '__main__':
     unet.eval()
     unet = unet.to(device)
 
-    test_loss = 0.
-    test_iou = 0.
-    cam_iou = 0.
+    test_loss = 0.0
+    test_iou = 0.0
+    cam_iou = 0.0
     for x, _, image_ids in test_loader:
         x = x.to(device)
         trimap = get_trimap(image_ids).to(device)
@@ -229,35 +252,62 @@ if __name__ == '__main__':
     test_iou /= len(test_dataset)
     cam_iou /= len(test_dataset)
 
-    print(f"test_loss: {test_loss},test_iou:{test_iou}, {datetime.datetime.now()}, cam_iou:{cam_iou}")
+    print(
+        f"test_loss: {test_loss},test_iou:{test_iou}, {datetime.datetime.now()}, cam_iou:{cam_iou}"
+    )
 
     # display samples
     unet.eval()
-    for i, (x, y, image_ids) in enumerate(test_loader):
-        if i > 0:
-            break
-        if i == 0:
-            x = x.to(device)
+    # 创建保存图像的目录
+    os.makedirs("output_images", exist_ok=True)
 
-            x_denorm = denormalize(x[0].unsqueeze(0).to('cpu'))  # 保持batch维度处理
-            image_np = x_denorm.squeeze(0).permute(1, 2, 0).numpy()  # C×H×W → H×W×C
-            image_uint8 = (image_np * 255).astype(np.uint8)  # 转为0-255整型
-            pred_pil = Image.fromarray(image_uint8)
-            pred_pil.show()
+    print("正在保存测试集图像...")
+    for i, (x, y, image_ids) in enumerate(tqdm(test_loader, desc="保存测试集图像")):
+        x = x.to(device)
 
-            trimap = get_trimap(image_ids)
-            binary_image = (trimap[0].squeeze(0) > 0.5).float() * 255
-            pil_image = Image.fromarray(binary_image.to('cpu').numpy().astype(np.uint8), mode='L')
-            pil_image.show()
+        # 处理当前批次中的每个图像
+        for j in range(len(image_ids)):
+            # 创建一个宽幅图像来容纳所有图像
+            combined_width = 224 * 4  # 假设图像宽度为224
+            combined_height = 224
+            combined_image = Image.new("RGB", (combined_width, combined_height))
 
+            # 1. 原始图像
+            x_denorm = denormalize(x[j].unsqueeze(0).to("cpu"))
+            image_np = x_denorm.squeeze(0).permute(1, 2, 0).numpy()
+            image_uint8 = (image_np * 255).astype(np.uint8)
+            original_img = Image.fromarray(image_uint8)
+
+            # 2. trimap
+            trimap = get_trimap([image_ids[j]])
+            trimap_binary = (trimap[0].squeeze(0) > 0.5).float() * 255
+            trimap_img = Image.fromarray(
+                trimap_binary.to("cpu").numpy().astype(np.uint8), mode="L"
+            ).convert("RGB")
+
+            # 3. 预测掩码
             with torch.no_grad():
-                pred_mask = unet(x)
+                pred_mask = unet(x[j].unsqueeze(0))
 
-            binary_image = (pred_mask[0].squeeze(0) > 0.5).float() * 255
-            pil_image = Image.fromarray(binary_image.to('cpu').numpy().astype(np.uint8), mode='L')
-            pil_image.show()
+            mask_binary = (pred_mask[0].squeeze(0) > 0.5).float() * 255
+            mask_img = Image.fromarray(
+                mask_binary.to("cpu").numpy().astype(np.uint8), mode="L"
+            ).convert("RGB")
 
-            cam = get_cam(image_ids)
-            binary_image = cam[0].squeeze(0) * 255
-            pil_image = Image.fromarray(binary_image.to('cpu').numpy().astype(np.uint8), mode='L')
-            pil_image.show()
+            # 4. CAM
+            cam = get_cam([image_ids[j]])
+            cam_binary = cam[0].squeeze(0) * 255
+            cam_img = Image.fromarray(
+                cam_binary.to("cpu").numpy().astype(np.uint8), mode="L"
+            ).convert("RGB")
+
+            # 拼接图像
+            combined_image.paste(original_img, (0, 0))
+            combined_image.paste(trimap_img, (224, 0))
+            combined_image.paste(mask_img, (224 * 2, 0))
+            combined_image.paste(cam_img, (224 * 3, 0))
+
+            # 保存拼接后的图像
+            combined_image.save(f"output_images/combined_{image_ids[j]}.png")
+
+    print(f"所有测试图像已保存到 output_images 目录")
