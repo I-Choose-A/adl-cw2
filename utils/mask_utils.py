@@ -154,7 +154,33 @@ class DenseCRF(torch.nn.Module):
 
     def _guided_filter(self, guide, src, radius, eps):
         """引导滤波器，用于近似双边滤波"""
-        guide = guide.mean(dim=0, keepdim=True)  # [1, H, W]
+        # 记录原始维度以便后续处理
+        guide_dim = guide.dim()
+        src_dim = src.dim()
+
+        # 确保guide和src都是4D张量 [N,C,H,W]
+        if guide_dim == 3:  # [C,H,W]
+            guide = guide.unsqueeze(0)
+        elif guide_dim == 2:  # [H,W]
+            guide = guide.unsqueeze(0).unsqueeze(0)
+
+        if src_dim == 3:  # [C,H,W]
+            src = src.unsqueeze(0)
+        elif src_dim == 2:  # [H,W]
+            src = src.unsqueeze(0).unsqueeze(0)
+
+        # 确保guide和src具有相同的空间维度
+        if guide.shape[2:] != src.shape[2:]:
+            src = F.interpolate(
+                src,
+                size=(guide.shape[2], guide.shape[3]),
+                mode="bilinear",
+                align_corners=False,
+            )
+
+        # 将多通道guide转为单通道
+        if guide.shape[1] > 1:
+            guide = guide.mean(dim=1, keepdim=True)  # [N, 1, H, W]
 
         # 均值滤波器
         kernel_size = int(2 * radius) + 1
@@ -186,8 +212,29 @@ class DenseCRF(torch.nn.Module):
         mean_a = F.conv2d(a, mean_kernel, padding=padding)
         mean_b = F.conv2d(b, mean_kernel, padding=padding)
 
+        # 明确检查并处理尺寸
+        target_size = (guide.shape[2], guide.shape[3])  # 明确指定为(H,W)元组
+
+        # 确保尺寸一致
+        if mean_a.shape[2:] != guide.shape[2:]:
+            mean_a = F.interpolate(
+                mean_a, size=target_size, mode="bilinear", align_corners=False
+            )
+
+        if mean_b.shape[2:] != guide.shape[2:]:
+            mean_b = F.interpolate(
+                mean_b, size=target_size, mode="bilinear", align_corners=False
+            )
+
         # 最终输出
         output = mean_a * guide + mean_b
+
+        # 恢复原始维度
+        if guide_dim == 3 and output.dim() == 4:
+            output = output.squeeze(0)
+        elif guide_dim == 2 and output.dim() == 4:
+            output = output.squeeze(0).squeeze(0)
+
         return output
 
 
@@ -285,6 +332,19 @@ def create_cam(model, x, y, image_ids):
         gradients_layer3 = gradients_layer3[0]  # shape = (B,C,H,W)
         gradients_layer4 = gradients_layer4[0]  # shape = (B,C,H,W)
 
+        # 添加通道注意力机制
+        def channel_attention(features, gradients):
+            # 计算通道重要性
+            channel_weights = torch.sum(torch.abs(gradients), dim=[2, 3], keepdim=True)
+            channel_weights = F.softmax(channel_weights, dim=1)
+            # 应用通道注意力
+            weighted_features = features * channel_weights
+            return weighted_features
+
+        # 应用通道注意力
+        features_layer3 = channel_attention(features_layer3, gradients_layer3)
+        features_layer4 = channel_attention(features_layer4, gradients_layer4)
+
         # 分别计算两个层的GradCAM++
         # Layer 3 GradCAM++
         grad_2_layer3 = gradients_layer3**2
@@ -333,8 +393,31 @@ def create_cam(model, x, y, image_ids):
             cam_layer4.amax(dim=(1, 2), keepdim=True)[0] + 1e-8
         )
 
-        # 多尺度融合 - 高层特征权重更大，低层特征权重更小
-        cam = 0.7 * cam_layer4 + 0.3 * cam_layer3
+        # 自适应权重计算 - 基于CAM的清晰度
+        layer3_clarity = torch.mean(
+            torch.abs(
+                cam_layer3
+                - F.avg_pool2d(cam_layer3, kernel_size=3, stride=1, padding=1)
+            )
+        )
+        layer4_clarity = torch.mean(
+            torch.abs(
+                cam_layer4
+                - F.avg_pool2d(cam_layer4, kernel_size=3, stride=1, padding=1)
+            )
+        )
+
+        # 计算归一化权重
+        total_clarity = layer3_clarity + layer4_clarity + 1e-8
+        weight_layer3 = layer3_clarity / total_clarity
+        weight_layer4 = layer4_clarity / total_clarity
+
+        # 应用自适应权重融合，确保总权重为1
+        weight_layer3 = min(max(0.2, float(weight_layer3)), 0.5)
+        weight_layer4 = 1.0 - weight_layer3
+
+        # 多尺度融合 - 使用自适应权重
+        cam = weight_layer4 * cam_layer4 + weight_layer3 * cam_layer3
 
         # 再次归一化
         cam = (cam - cam.amin(dim=(1, 2), keepdim=True)[0]) / (
@@ -359,14 +442,23 @@ def create_cam(model, x, y, image_ids):
     # 集成多个视角的CAM (取平均)
     ensemble_cam = torch.mean(torch.cat(all_cams, dim=1), dim=1, keepdim=True)
 
-    # 边缘感知增强
+    # 改进的边缘感知增强
     for i in range(x.shape[0]):
         # 获取原始CAM和图像
         img_tensor = x[i]  # [3, H, W]
         cam_tensor = ensemble_cam[i, 0]  # [H, W]
 
-        # 使用Sobel算子提取边缘
-        edges = kf.sobel(img_tensor.mean(dim=0, keepdim=True).unsqueeze(0))
+        # 多边缘检测器融合
+        # Sobel边缘
+        sobel_edges = kf.sobel(img_tensor.mean(dim=0, keepdim=True).unsqueeze(0))
+        # Laplacian边缘
+        laplacian_edges = kf.laplacian(
+            img_tensor.mean(dim=0, keepdim=True).unsqueeze(0), kernel_size=3
+        )
+
+        # 融合多种边缘
+        edges = 0.6 * sobel_edges + 0.4 * laplacian_edges
+
         edges = F.interpolate(
             edges,
             size=(cam_tensor.shape[0], cam_tensor.shape[1]),
@@ -378,15 +470,23 @@ def create_cam(model, x, y, image_ids):
         # 归一化边缘强度
         edges = (edges - edges.min()) / (edges.max() - edges.min() + 1e-8)
 
-        # 边缘区域CAM值增强
-        edge_weight = edges > 0.2  # 边缘阈值筛选
+        # 自适应边缘阈值 - 基于边缘分布
+        edge_threshold = (
+            torch.quantile(edges.view(-1), 0.7) * 0.8
+        )  # 取70%分位数的80%作为阈值
+        edge_weight = edges > edge_threshold  # 自适应边缘阈值
 
         # 边缘感知调整：锐化边界处的CAM值
         cam_tensor_adjusted = cam_tensor.clone()
-        # 提高边缘处的CAM对比度
+
+        # 提高边缘处的CAM对比度 - 梯度增强
+        edge_intensity = (edges - edge_threshold).clamp(0, 1) * 0.5  # 边缘强度
+        cam_enhancement = 1.0 + edge_intensity  # 边缘处增强系数
+
+        # 应用边缘增强
         cam_tensor_adjusted = torch.where(
             edge_weight,
-            torch.clamp(cam_tensor * 1.2, 0, 1),  # 边缘处增强
+            torch.clamp(cam_tensor * cam_enhancement, 0, 1),  # 边缘处增强
             cam_tensor,  # 非边缘处保持不变
         )
 
@@ -398,7 +498,7 @@ def create_cam(model, x, y, image_ids):
         torch.save(single_cam, f"data/CAM/{image_ids[i]}.pt")
 
     # 创建CRF模型并移至GPU
-    dense_crf = DenseCRF(iter_max=15).to(device)  # 增加迭代次数
+    dense_crf = DenseCRF(iter_max=10).to(device)  # 减少迭代次数，但优化其他参数
 
     # CRF Processing (per image in batch)
     for i in range(x.shape[0]):
@@ -413,19 +513,32 @@ def create_cam(model, x, y, image_ids):
         if torch.max(cam_tensor) < 0.1:
             continue
 
+        # 基于图像特性自适应调整CRF参数
+        # 计算图像复杂度 - 基于边缘密度
+        img_gray = img_tensor.mean(dim=0)
+        img_edges = kf.sobel(img_gray.unsqueeze(0).unsqueeze(0))
+        edge_density = torch.mean((img_edges > 0.1).float())  # 将布尔值转换为浮点数
+
+        # 根据图像复杂度自适应调整参数
+        sxy_gaussian = 3 if edge_density > 0.1 else 5  # 复杂图像使用更小的高斯窗口
+        compat_gaussian = 8 + 8 * edge_density  # 复杂图像增大兼容性参数
+        sxy_bilateral = 20 + 10 * (1 - edge_density)  # 简单图像使用更大的双边窗口
+        srgb_bilateral = 8 + 7 * edge_density  # 复杂图像增大颜色敏感度
+        compat_bilateral = 4 + 3 * edge_density  # 复杂图像增大兼容性
+
         # 准备一元势（在GPU上）
         unary = torch.stack([1 - cam_tensor, cam_tensor], dim=0)  # [2, H, W]
 
-        # 执行CRF推理
+        # 执行CRF推理 - 使用自适应参数
         Q = dense_crf(
             img_tensor,
             unary,
-            sxy_gaussian=4,  # 调整空间高斯参数
-            compat_gaussian=12,  # 调整兼容性参数
-            sxy_bilateral=25,  # 调整双边滤波空间参数
-            srgb_bilateral=15,  # 调整双边滤波颜色参数
-            compat_bilateral=5,
-        )  # 调整双边滤波兼容性参数
+            sxy_gaussian=sxy_gaussian,
+            compat_gaussian=compat_gaussian,
+            sxy_bilateral=sxy_bilateral,
+            srgb_bilateral=srgb_bilateral,
+            compat_bilateral=compat_bilateral,
+        )
 
         # 获取最终结果
         refined = torch.argmax(Q, dim=0)  # [H, W]
