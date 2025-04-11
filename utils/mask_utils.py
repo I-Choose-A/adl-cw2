@@ -278,12 +278,22 @@ def create_cam(model, x, y, image_ids):
         transformed_x = torch.stack([transform_fn(img) for img in x])
 
         # 收集不同层级的特征图
+        features_layer1 = []
+        features_layer2 = []
         features_layer3 = []
         features_layer4 = []
+        gradients_layer1 = []
+        gradients_layer2 = []
         gradients_layer3 = []
         gradients_layer4 = []
 
         # hook方法收集特征图
+        def hook_feature_layer1(module, input, output):
+            features_layer1.append(output)
+
+        def hook_feature_layer2(module, input, output):
+            features_layer2.append(output)
+
         def hook_feature_layer3(module, input, output):
             features_layer3.append(output)
 
@@ -291,6 +301,12 @@ def create_cam(model, x, y, image_ids):
             features_layer4.append(output)
 
         # hook方法收集梯度图
+        def hook_grad_layer1(module, grad_input, grad_output):
+            gradients_layer1.append(grad_output[0])
+
+        def hook_grad_layer2(module, grad_input, grad_output):
+            gradients_layer2.append(grad_output[0])
+
         def hook_grad_layer3(module, grad_input, grad_output):
             gradients_layer3.append(grad_output[0])
 
@@ -298,11 +314,23 @@ def create_cam(model, x, y, image_ids):
             gradients_layer4.append(grad_output[0])
 
         # 注册前向和反向钩子
+        handle_layer1 = model.layer1[-1].conv2.register_forward_hook(
+            hook_feature_layer1
+        )
+        handle_layer2 = model.layer2[-1].conv2.register_forward_hook(
+            hook_feature_layer2
+        )
         handle_layer3 = model.layer3[-1].conv2.register_forward_hook(
             hook_feature_layer3
         )
         handle_layer4 = model.layer4[-1].conv2.register_forward_hook(
             hook_feature_layer4
+        )
+        handle_grad_layer1 = model.layer1[-1].conv2.register_full_backward_hook(
+            hook_grad_layer1
+        )
+        handle_grad_layer2 = model.layer2[-1].conv2.register_full_backward_hook(
+            hook_grad_layer2
         )
         handle_grad_layer3 = model.layer3[-1].conv2.register_full_backward_hook(
             hook_grad_layer3
@@ -321,14 +349,22 @@ def create_cam(model, x, y, image_ids):
         logits.backward(gradient=one_hot_y, retain_graph=True)
 
         # 移除hook
+        handle_layer1.remove()
+        handle_layer2.remove()
         handle_layer3.remove()
         handle_layer4.remove()
+        handle_grad_layer1.remove()
+        handle_grad_layer2.remove()
         handle_grad_layer3.remove()
         handle_grad_layer4.remove()
 
         # 只使用第一次调用的数据
+        features_layer1 = features_layer1[0]  # shape = (B,C,H,W)
+        features_layer2 = features_layer2[0]  # shape = (B,C,H,W)
         features_layer3 = features_layer3[0]  # shape = (B,C,H,W)
         features_layer4 = features_layer4[0]  # shape = (B,C,H,W)
+        gradients_layer1 = gradients_layer1[0]  # shape = (B,C,H,W)
+        gradients_layer2 = gradients_layer2[0]  # shape = (B,C,H,W)
         gradients_layer3 = gradients_layer3[0]  # shape = (B,C,H,W)
         gradients_layer4 = gradients_layer4[0]  # shape = (B,C,H,W)
 
@@ -341,88 +377,107 @@ def create_cam(model, x, y, image_ids):
             weighted_features = features * channel_weights
             return weighted_features
 
-        # 应用通道注意力
+        # 应用通道注意力到所有层
+        features_layer1 = channel_attention(features_layer1, gradients_layer1)
+        features_layer2 = channel_attention(features_layer2, gradients_layer2)
         features_layer3 = channel_attention(features_layer3, gradients_layer3)
         features_layer4 = channel_attention(features_layer4, gradients_layer4)
 
-        # 分别计算两个层的GradCAM++
-        # Layer 3 GradCAM++
-        grad_2_layer3 = gradients_layer3**2
-        grad_3_layer3 = grad_2_layer3 * gradients_layer3
+        # 分别计算所有层的GradCAM++
+        # 定义一个GradCAM++计算的函数
+        def calculate_gradcam_pp(features, gradients):
+            grad_2 = gradients**2
+            grad_3 = grad_2 * gradients
 
-        alpha_num_layer3 = grad_2_layer3
-        alpha_denom_layer3 = 2 * grad_2_layer3 + features_layer3 * grad_3_layer3 + 1e-8
+            alpha_num = grad_2
+            alpha_denom = 2 * grad_2 + features * grad_3 + 1e-8
 
-        alpha_layer3 = alpha_num_layer3 / alpha_denom_layer3
-        alpha_norm_layer3 = alpha_layer3 / (
-            torch.sum(alpha_layer3, dim=[1, 2, 3], keepdim=True) + 1e-8
-        )
+            alpha = alpha_num / alpha_denom
+            alpha_norm = alpha / (torch.sum(alpha, dim=[1, 2, 3], keepdim=True) + 1e-8)
 
-        cam_layer3 = torch.sum(alpha_norm_layer3 * F.relu(features_layer3), dim=1)
-        cam_layer3 = F.relu(cam_layer3)
+            cam = torch.sum(alpha_norm * F.relu(features), dim=1)
+            cam = F.relu(cam)
+            return cam
 
-        # Layer 4 GradCAM++
-        grad_2_layer4 = gradients_layer4**2
-        grad_3_layer4 = grad_2_layer4 * gradients_layer4
+        # 计算每一层的CAM
+        cam_layer1 = calculate_gradcam_pp(features_layer1, gradients_layer1)
+        cam_layer2 = calculate_gradcam_pp(features_layer2, gradients_layer2)
+        cam_layer3 = calculate_gradcam_pp(features_layer3, gradients_layer3)
+        cam_layer4 = calculate_gradcam_pp(features_layer4, gradients_layer4)
 
-        alpha_num_layer4 = grad_2_layer4
-        alpha_denom_layer4 = 2 * grad_2_layer4 + features_layer4 * grad_3_layer4 + 1e-8
+        # 将所有CAM调整到相同大小(使用layer4的尺寸作为基准)
+        target_size = cam_layer4.shape[1:]
 
-        alpha_layer4 = alpha_num_layer4 / alpha_denom_layer4
-        alpha_norm_layer4 = alpha_layer4 / (
-            torch.sum(alpha_layer4, dim=[1, 2, 3], keepdim=True) + 1e-8
-        )
+        # 上采样其他层的CAM到target_size
+        def upsample_cam(cam, target_size):
+            return F.interpolate(
+                cam.unsqueeze(1), size=target_size, mode="bilinear", align_corners=False
+            ).squeeze(1)
 
-        cam_layer4 = torch.sum(alpha_norm_layer4 * F.relu(features_layer4), dim=1)
-        cam_layer4 = F.relu(cam_layer4)
+        cam_layer1 = upsample_cam(cam_layer1, target_size)
+        cam_layer2 = upsample_cam(cam_layer2, target_size)
+        cam_layer3 = upsample_cam(cam_layer3, target_size)
 
-        # 将两层的CAM调整到相同大小
-        cam_layer3 = F.interpolate(
-            cam_layer3.unsqueeze(1),
-            size=cam_layer4.shape[1:],
-            mode="bilinear",
-            align_corners=False,
-        ).squeeze(1)
-
-        # 归一化
-        cam_layer3 = (cam_layer3 - cam_layer3.amin(dim=(1, 2), keepdim=True)[0]) / (
-            cam_layer3.amax(dim=(1, 2), keepdim=True)[0] + 1e-8
-        )
-
-        cam_layer4 = (cam_layer4 - cam_layer4.amin(dim=(1, 2), keepdim=True)[0]) / (
-            cam_layer4.amax(dim=(1, 2), keepdim=True)[0] + 1e-8
-        )
-
-        # 自适应权重计算 - 基于CAM的清晰度
-        layer3_clarity = torch.mean(
-            torch.abs(
-                cam_layer3
-                - F.avg_pool2d(cam_layer3, kernel_size=3, stride=1, padding=1)
+        # 归一化所有层的CAM
+        def normalize_cam(cam):
+            return (cam - cam.amin(dim=(1, 2), keepdim=True)[0]) / (
+                cam.amax(dim=(1, 2), keepdim=True)[0] + 1e-8
             )
+
+        cam_layer1 = normalize_cam(cam_layer1)
+        cam_layer2 = normalize_cam(cam_layer2)
+        cam_layer3 = normalize_cam(cam_layer3)
+        cam_layer4 = normalize_cam(cam_layer4)
+
+        # 计算层级清晰度指标
+        def calculate_clarity(cam):
+            # 使用梯度幅值作为清晰度指标
+            grad_x = torch.abs(cam[:, :, 1:] - cam[:, :, :-1])
+            grad_y = torch.abs(cam[:, 1:, :] - cam[:, :-1, :])
+
+            # 平均梯度幅值
+            clarity = (torch.mean(grad_x) + torch.mean(grad_y)) / 2
+            return clarity
+
+        clarity_layer1 = calculate_clarity(cam_layer1)
+        clarity_layer2 = calculate_clarity(cam_layer2)
+        clarity_layer3 = calculate_clarity(cam_layer3)
+        clarity_layer4 = calculate_clarity(cam_layer4)
+
+        # 计算自适应权重
+        total_clarity = (
+            clarity_layer1 + clarity_layer2 + clarity_layer3 + clarity_layer4 + 1e-8
         )
-        layer4_clarity = torch.mean(
-            torch.abs(
-                cam_layer4
-                - F.avg_pool2d(cam_layer4, kernel_size=3, stride=1, padding=1)
+
+        # 基础权重 - 偏向高层级特征
+        base_weights = torch.tensor([0.1, 0.2, 0.3, 0.4], device=device)
+
+        # 清晰度权重
+        clarity_weights = (
+            torch.tensor(
+                [clarity_layer1, clarity_layer2, clarity_layer3, clarity_layer4],
+                device=device,
             )
+            / total_clarity
         )
 
-        # 计算归一化权重
-        total_clarity = layer3_clarity + layer4_clarity + 1e-8
-        weight_layer3 = layer3_clarity / total_clarity
-        weight_layer4 = layer4_clarity / total_clarity
+        # 融合基础和清晰度权重
+        alpha = 0.7  # 控制基础权重的影响
+        fusion_weights = alpha * base_weights + (1 - alpha) * clarity_weights
 
-        # 应用自适应权重融合，确保总权重为1
-        weight_layer3 = min(max(0.2, float(weight_layer3)), 0.5)
-        weight_layer4 = 1.0 - weight_layer3
+        # 归一化权重和
+        fusion_weights = fusion_weights / fusion_weights.sum()
 
-        # 多尺度融合 - 使用自适应权重
-        cam = weight_layer4 * cam_layer4 + weight_layer3 * cam_layer3
-
-        # 再次归一化
-        cam = (cam - cam.amin(dim=(1, 2), keepdim=True)[0]) / (
-            cam.amax(dim=(1, 2), keepdim=True)[0] + 1e-8
+        # 应用多层融合
+        cam = (
+            fusion_weights[0] * cam_layer1
+            + fusion_weights[1] * cam_layer2
+            + fusion_weights[2] * cam_layer3
+            + fusion_weights[3] * cam_layer4
         )
+
+        # 再次归一化并继续之前的处理
+        cam = normalize_cam(cam)
 
         # 上采样到输入尺寸
         cam = F.interpolate(
