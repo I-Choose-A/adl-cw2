@@ -259,55 +259,67 @@ if __name__ == "__main__":
     # display samples
     unet.eval()
     # 创建保存图像的目录
-    os.makedirs("output_images", exist_ok=True)
+    os.makedirs("output_images/train", exist_ok=True)
+    os.makedirs("output_images/val", exist_ok=True)
+    os.makedirs("output_images/test", exist_ok=True)
 
-    print("正在保存测试集图像...")
-    for i, (x, y, image_ids) in enumerate(tqdm(test_loader, desc="保存测试集图像")):
-        x = x.to(device)
+    def save_images(loader, folder_name):
+        print(f"正在保存{folder_name}图像...")
+        for i, (x, y, image_ids) in enumerate(
+            tqdm(loader, desc=f"保存{folder_name}图像")
+        ):
+            x = x.to(device)
 
-        # 处理当前批次中的每个图像
-        for j in range(len(image_ids)):
-            # 创建一个宽幅图像来容纳所有图像
-            combined_width = 224 * 4  # 假设图像宽度为224
-            combined_height = 224
-            combined_image = Image.new("RGB", (combined_width, combined_height))
+            # 处理当前批次中的每个图像
+            for j in range(len(image_ids)):
+                # 创建一个宽幅图像来容纳所有图像
+                combined_width = 224 * 4  # 假设图像宽度为224
+                combined_height = 224
+                combined_image = Image.new("RGB", (combined_width, combined_height))
 
-            # 1. 原始图像
-            x_denorm = denormalize(x[j].unsqueeze(0).to("cpu"))
-            image_np = x_denorm.squeeze(0).permute(1, 2, 0).numpy()
-            image_uint8 = (image_np * 255).astype(np.uint8)
-            original_img = Image.fromarray(image_uint8)
+                # 1. 原始图像
+                x_denorm = denormalize(x[j].unsqueeze(0).to("cpu"))
+                image_np = x_denorm.squeeze(0).permute(1, 2, 0).numpy()
+                image_uint8 = (image_np * 255).astype(np.uint8)
+                original_img = Image.fromarray(image_uint8)
 
-            # 2. trimap
-            trimap = get_trimap([image_ids[j]])
-            trimap_binary = (trimap[0].squeeze(0) > 0.5).float() * 255
-            trimap_img = Image.fromarray(
-                trimap_binary.to("cpu").numpy().astype(np.uint8), mode="L"
-            ).convert("RGB")
+                # 2. trimap
+                trimap = get_trimap([image_ids[j]])
+                trimap_binary = (trimap[0].squeeze(0) > 0.5).float() * 255
+                trimap_img = Image.fromarray(
+                    trimap_binary.to("cpu").numpy().astype(np.uint8), mode="L"
+                ).convert("RGB")
 
-            # 3. 预测掩码
-            with torch.no_grad():
-                pred_mask = unet(x[j].unsqueeze(0))
+                # 3. 预测掩码
+                with torch.no_grad():
+                    pred_mask = unet(x[j].unsqueeze(0))
 
-            mask_binary = (pred_mask[0].squeeze(0) > 0.5).float() * 255
-            mask_img = Image.fromarray(
-                mask_binary.to("cpu").numpy().astype(np.uint8), mode="L"
-            ).convert("RGB")
+                mask_binary = (pred_mask[0].squeeze(0) > 0.5).float() * 255
+                mask_img = Image.fromarray(
+                    mask_binary.to("cpu").numpy().astype(np.uint8), mode="L"
+                ).convert("RGB")
 
-            # 4. CAM
-            cam = get_cam([image_ids[j]])
-            cam_binary = cam[0].squeeze(0) * 255
-            cam_img = Image.fromarray(
-                cam_binary.to("cpu").numpy().astype(np.uint8), mode="L"
-            ).convert("RGB")
+                # 4. CAM
+                cam = get_cam([image_ids[j]])
+                cam_binary = cam[0].squeeze(0) * 255
+                cam_img = Image.fromarray(
+                    cam_binary.to("cpu").numpy().astype(np.uint8), mode="L"
+                ).convert("RGB")
 
-            # 拼接图像
-            combined_image.paste(original_img, (0, 0))
-            combined_image.paste(trimap_img, (224, 0))
-            combined_image.paste(mask_img, (224 * 2, 0))
-            combined_image.paste(cam_img, (224 * 3, 0))
+                # 拼接图像
+                combined_image.paste(original_img, (0, 0))
+                combined_image.paste(trimap_img, (224, 0))
+                combined_image.paste(mask_img, (224 * 2, 0))
+                combined_image.paste(cam_img, (224 * 3, 0))
 
-            # 保存拼接后的图像
-            combined_image.save(f"output_images/combined_{image_ids[j]}.png")
+                # 保存拼接后的图像
+                combined_image.save(
+                    f"output_images/{folder_name}/combined_{image_ids[j]}.png"
+                )
 
-    print(f"所有测试图像已保存到 output_images 目录")
+    # 保存训练集、验证集和测试集的图像
+    save_images(train_loader, "train")
+    save_images(val_loader, "val")
+    save_images(test_loader, "test")
+
+    print(f"所有图像已保存到 output_images 目录下的 train、val 和 test 子目录")
