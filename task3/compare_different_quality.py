@@ -32,7 +32,6 @@ val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_w
 test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=4,
                          pin_memory=True, collate_fn=custom_collate_fn)
 
-# 定义模型
 unet = UNet().to(device)
 
 def train_unet(model, model_name, save_to = '',noise_ratio = 0):
@@ -95,7 +94,6 @@ def train_unet(model, model_name, save_to = '',noise_ratio = 0):
 
         print(f"[{model_name}] Epoch {epoch+1} | TrainLoss={train_loss/len(train_loader):.4f} | ValLoss={val_loss:.4f} | ValIoU={val_iou:.4f}")
 
-        # 保存最佳模型
         if val_iou > best_iou:
             best_iou = val_iou
             torch.save(model.state_dict(), f"models/best_{model_name}")
@@ -105,7 +103,7 @@ def train_unet(model, model_name, save_to = '',noise_ratio = 0):
 
 def corrupt_mask(mask, corruption_prob=0):
     '''
-    用来给mask加噪声,仅用于生成不同质量的伪标签
+    adding noise to mask
     '''
     rand_noise = torch.rand_like(mask)
     flip_mask = (rand_noise < corruption_prob).float()

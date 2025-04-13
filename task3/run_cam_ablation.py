@@ -13,11 +13,11 @@ batch_size = 32
 result_log = "cam_ablation_results.txt"
 
 def clear_model_and_cam(model_name):
-    # 清空旧模型
+    # clear past models
     for path in [f"models/{model_name}.pth", f"models/best_{model_name}.pth"]:
         if os.path.exists(path):
             os.remove(path)
-    # 清空 CAM
+    # clear past cam 
     if os.path.exists("data/CAM"):
         shutil.rmtree("data/CAM")
 
@@ -69,7 +69,7 @@ def run_threshold_experiment(resnet_name, test_loader, thresholds):
                     trimap = get_trimap(image_ids).to(device)
                     cam = get_cam(image_ids).to(device)
 
-                    # 统计 CAM 值分布
+                    #CAM distribution
                     cam_vals.append(cam)
 
                     cam_bin = (cam > thresh).float()
@@ -84,18 +84,18 @@ def run_threshold_experiment(resnet_name, test_loader, thresholds):
 
 
 if __name__ == "__main__":
-    # 删除旧结果
+    # clear past result
     if os.path.exists(result_log):
         os.remove(result_log)
 
-    # ResNet18 + 多个 CAM 阈值
+    # ResNet18 + 0.3 0.5 0.7 threshold
     test_loader = train_and_generate_cam("resnet18")
     run_threshold_experiment("resnet18", test_loader, [0.3, 0.5, 0.7])
 
-    # ResNet34 + 0.5
+    # ResNet34 + 0.3 0.5 0.7 threshold
     test_loader = train_and_generate_cam("resnet34")
     run_threshold_experiment("resnet34", test_loader, [0.3, 0.5, 0.7])
 
-    # ResNet50 + 0.5
+    # ResNet50 + 0.3 0.5 0.7 threshold
     test_loader = train_and_generate_cam("resnet50")
     run_threshold_experiment("resnet50", test_loader, [0.3, 0.5, 0.7])

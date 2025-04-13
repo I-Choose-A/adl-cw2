@@ -21,7 +21,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 torch.manual_seed(2025)
 batch_size = 32
 
-# ======== 工具函数 ========
+# ======== utility functions========
 def denormalize(tensor, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]):
     tensor = tensor.clone()
     mean = torch.tensor(mean).view(1, 3, 1, 1)
@@ -44,14 +44,14 @@ class NoBBoxWrapper(torch.utils.data.Dataset):
         image, label, image_id, _ = self.dataset[idx]
         return image, label, image_id
 
-# ======== 模型训练 ========
+# ======== model training ========
 def train_classifier(model):
     epochs = 20
     model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
     loss_fn = torch.nn.CrossEntropyLoss()
 
-    best_acc = 0.0  # 可选：保存最优模型
+    best_acc = 0.0
 
     for epoch in range(epochs):
         model.train()
@@ -67,7 +67,7 @@ def train_classifier(model):
             total_correct += (pred.argmax(1) == y).sum().item()
         train_acc = total_correct / len(train_dataset)
 
-        # ========== 验证 ========== #
+        # ========== val ========== #
         model.eval()
         val_correct = 0.
         val_loss = 0.
@@ -82,7 +82,7 @@ def train_classifier(model):
 
         print(f"[Classifier] Epoch {epoch+1} | Train Acc={train_acc*100:.2f}% | Val Acc={val_acc*100:.2f}%")
 
-        # 保存最佳模型
+        # save best model
         if val_acc > best_acc:
             best_acc = val_acc
             torch.save(model.state_dict(), "models/best_resnet18.pth")
@@ -143,7 +143,7 @@ def train_unet(model, use_bbox=True, model_name="unet_bbox.pth"):
 
         print(f"[{model_name}] Epoch {epoch+1} | TrainLoss={running_loss/len(train_loader):.4f} | ValLoss={val_loss:.4f} | ValIoU={val_iou:.4f}")
 
-        # 保存最佳模型
+        # save best model
         if val_iou > best_iou:
             best_iou = val_iou
             torch.save(model.state_dict(), f"models/best_{model_name}")
@@ -151,7 +151,7 @@ def train_unet(model, use_bbox=True, model_name="unet_bbox.pth"):
 
     torch.save(model.state_dict(), f"models/{model_name}")
 
-# ======== 模型评估 ========
+# ======== model evaluate ========
 def evaluate_unet(model, loader, label=""):
     model.eval()
     model.to(device)
@@ -200,9 +200,8 @@ def evaluate_unet(model, loader, label=""):
 
     
 
-# ======== 主流程 ========
 if __name__ == "__main__":
-    # ======== 数据准备 ========
+    # ======== data loaders ========
     dataset = OxfordIIITPet()
     train_size = int(len(dataset) * 0.8)
     val_size = int(len(dataset) * 0.1)
@@ -240,7 +239,7 @@ if __name__ == "__main__":
     else:
         unet_nobbox.load_state_dict(torch.load("models/unet_nobbox.pth"))
 
-    # ========== 加载并评估 Best 模型 ==========
+    # ==========  eval Best models ==========
 
     if os.path.exists("models/best_unet_bbox.pth"):
         best_unet_bbox = UNet().to(device)
