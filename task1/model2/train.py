@@ -150,7 +150,7 @@ def denormalize(tensor, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]):
 
 
 if __name__ == '__main__':
-    if not os.path.exists("Task1/models/resnet18.pth"):
+    if not os.path.exists("task1/model2/models/resnet18.pth"):
         train_classifier(resnet)
     else:
         resnet.load_state_dict(torch.load("task1/model2/models/resnet18.pth"))
