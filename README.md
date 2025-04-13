@@ -20,7 +20,6 @@ wget https://www.robots.ox.ac.uk/~vgg/data/pets/data/annotations.tar.gz
 ```bash
 mkdir -p annotations && tar -xzf annotations.tar.gz -C annotations --strip-components=1
 ```
-```
 
 
 其次创建一个新的虚拟环境，我们要测试一下到底要用哪些包：
