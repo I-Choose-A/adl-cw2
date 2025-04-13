@@ -1,16 +1,9 @@
 # 数据目录
-/data/
-data/
-*/data/
-Task2-Weakly_Supersive_learning/data/
+task2/data/CAM
+task2/data/__pycache__
+images/
 
-# 模型输出和checkpoint
-/output/
-output/
-*/output/
-Task2-Weakly_Supersive_learning/output/
-# *.pth
-# *.pth.tar
+
 *.pt
 *.ckpt
 *.bin
@@ -69,3 +62,4 @@ Thumbs.db
 # 临时文件
 temp/
 tmp/ 
+output_images/
