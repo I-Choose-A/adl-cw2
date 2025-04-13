@@ -1,11 +1,12 @@
-import sys
-import os
 import datetime
-from PIL import Image
+import os
+import sys
 
 import numpy as np
 import torch
+from PIL import Image
 from torch.utils.data import DataLoader, random_split
+from tqdm import tqdm
 
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../'))
 if project_root not in sys.path:
@@ -96,8 +97,8 @@ def denormalize(tensor, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]):
     tensor = tensor.clone()
     mean = torch.tensor(mean).view(1, 3, 1, 1)
     std = torch.tensor(std).view(1, 3, 1, 1)
-    tensor.mul_(std).add_(mean)
-    return tensor.clamp_(0, 1)
+    tensor.mul_(std).add_(mean)  # x = (x_norm * std) + mean
+    return tensor.clamp_(0, 1)  # clip to [0,1]
 
 
 def test_unet(model):

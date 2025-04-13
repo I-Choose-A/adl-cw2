@@ -6,7 +6,7 @@ import torch
 from PIL import Image
 from torch.utils.data import DataLoader, random_split
 
-from data.dataset import OxfordIIITPet
+from ..data.dataset import OxfordIIITPet
 from eval import eval_classifier
 from models.resnet import ResNet18
 from models.deeplabv3 import DeepLabV3
@@ -141,18 +141,16 @@ def train_deeplab(model):
     torch.save(model.state_dict(), "task1/model2/models/deeplabv3.pth")
 
 
-# 逆转归一化
 def denormalize(tensor, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]):
-    """将归一化的Tensor逆转回原始值域"""
     tensor = tensor.clone()
     mean = torch.tensor(mean).view(1, 3, 1, 1)
     std = torch.tensor(std).view(1, 3, 1, 1)
-    tensor.mul_(std).add_(mean)
-    return tensor.clamp_(0, 1)
+    tensor.mul_(std).add_(mean)  # x = (x_norm * std) + mean
+    return tensor.clamp_(0, 1)  # clip to [0,1]
 
 
 if __name__ == '__main__':
-    if not os.path.exists("Task1/models/resnet18.pth"):
+    if not os.path.exists("task1/model2/models/resnet18.pth"):
         train_classifier(resnet)
     else:
         resnet.load_state_dict(torch.load("task1/model2/models/resnet18.pth"))
