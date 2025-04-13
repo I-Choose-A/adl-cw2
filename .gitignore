@@ -1,7 +1,8 @@
 # 数据目录
 task2/data/CAM
-task2/data/images
 task2/data/__pycache__
+images/
+
 
 # 模型输出和checkpoint
 task2/output/

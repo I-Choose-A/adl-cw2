@@ -613,7 +613,7 @@ def get_cam(image_ids):
 def get_trimap(image_ids):
     trimaps = []
     for image_id in image_ids:
-        trimap_path = f"data/annotations/trimaps/{image_id}.png"
+        trimap_path = f"../annotations/trimaps/{image_id}.png"
         trimap = Image.open(trimap_path)
         trimap = transforms.Resize((256, 256))(trimap)
 

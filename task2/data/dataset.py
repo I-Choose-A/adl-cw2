@@ -65,7 +65,7 @@ class OxfordIIITPet(Dataset):
 
         column_name = ["Image", "ID", "SPECIES", "BREED ID"]
         self.label_df = pd.read_csv(
-            "data/annotations/list.txt",
+            "../annotations/list.txt",
             sep="\s+",
             skiprows=6,
             header=None,
@@ -74,7 +74,7 @@ class OxfordIIITPet(Dataset):
 
         self.ids = []
 
-        self.images_folder = "data/images/"
+        self.images_folder = "../images/"
         for filename in os.listdir(self.images_folder):
             if filename.lower().endswith(".jpg"):
                 if not self.label_df[self.label_df["Image"] == filename[:-4]].empty:
