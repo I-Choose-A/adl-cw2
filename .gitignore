@@ -4,10 +4,6 @@ task2/data/__pycache__
 images/
 
 
-# 模型输出和checkpoint
-task2/output/
-task2/output_images/
-*.pth.tar
 *.pt
 *.ckpt
 *.bin
