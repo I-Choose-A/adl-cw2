@@ -1,31 +1,49 @@
-# ADL-CW2
+# 测试方法：
 
-## 环境配置
+首先先下载数据集：
 
-使用 Conda 创建并配置环境：
 ```bash
-# 创建环境
-conda create -n comp0197-cw2-pt python=3.12 pip
+wget https://www.robots.ox.ac.uk/~vgg/data/pets/data/images.tar.gz
+```
 
-# 激活环境
-conda activate comp0197-cw2-pt 
+然后解压：
+```bash
+mkdir -p images && tar -xzf images.tar.gz -C images --strip-components=1
+```
 
-# 安装 PyTorch
+
+其次创建一个新的虚拟环境，我们要测试一下到底要用哪些包：
+```bash
+conda create -n cw2 python=3.12 pip
+```
+
+激活环境：
+```bash
+conda activate cw2
+```
+
+安装老师要求的包：
+```bash
 pip install torch==2.5.0 torchvision --index-url https://download.pytorch.org/whl/cpu
 ```
 
-## 项目分组
 
-1. **baseline组**
-   - 王俊儒
-   - 杨佳晟
-   - 陈威龙
+对于每个task，先进入该task的工作目录：
 
-2. **弱监督组**（图像标签 ——> 像素标签、弱监督）
-   - 李朝晖
-   - 王路悦
-   - 陈昕远
+例如：
+```bash
+cd task2
+```
 
-3. **开放问题组**
-   - Andy
-   - 陈贤铭
+然后运行：
+```bash
+python train.py
+```
+
+对于task1的两个模型，运行：
+```bash
+python model1/train.py
+python model2/train.py
+```
+
+确保都能跑之后就可以

@@ -1,0 +1,8 @@
+20 epoch
+Best Unet :Test Loss: 0.0089, Test IoU: 0.6137
+Best 5% noise Unet: Test Loss: 0.0088, Test IoU: 0.6071
+Best 10% noise Unet: Test Loss: 0.0089, Test IoU: 0.6047
+
+Raw CAM IoU:      0.5742
+Noise 5% CAM IoU: 0.5314
+Noise 10% CAM IoU:0.4928
