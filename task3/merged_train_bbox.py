@@ -7,7 +7,6 @@ import torch.nn.functional as F
 from PIL import Image
 from tqdm import tqdm
 from torch.utils.data import DataLoader, random_split
-import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
 from data.dataset_bbox import OxfordIIITPet
@@ -123,17 +122,6 @@ def train_unet(model, use_bbox=True, model_name="unet_bbox.pth"):
             optimizer.step()
             running_loss += loss.item()
 
-            # ========== 验证 ========== #
-            if epoch == 0 and i == 0:
-                print("generate picture")
-                flat_vals = cam.detach().cpu().numpy().flatten()
-                plt.hist(flat_vals, bins=50, color='steelblue')
-                plt.title("CAM Value Distribution (First Batch)")
-                plt.xlabel("CAM Value")
-                plt.ylabel("Frequency")
-                plt.tight_layout()
-                plt.savefig("cam_value_distribution.png")
-                plt.close()
         model.eval()
         val_loss = 0.0
         val_iou = 0.0
@@ -211,55 +199,6 @@ def evaluate_unet(model, loader, label=""):
           f"CAM-IoU={cam_iou/n:.4f}, BBox-CAM-IoU={bbox_cam_iou/n:.4f}")
 
     
-def visualize_comparison_v2(x_tensor, image_id, trimap_tensor, cam, masked_cam,
-                            pred_best_nobbox=None, pred_best_bbox=None,
-                            bbox=None, return_fig=False):
-    import matplotlib.pyplot as plt
-    import matplotlib.patches as patches
-
-    x_denorm = denormalize(x_tensor.unsqueeze(0)).squeeze().permute(1, 2, 0).cpu().numpy()
-    trimap_np = trimap_tensor.squeeze().cpu().numpy()
-    cam_np = cam.squeeze().detach().cpu().numpy()
-    masked_np = masked_cam.squeeze().detach().cpu().numpy()
-
-    best_nobbox_np = (pred_best_nobbox[0].squeeze().cpu().numpy() > 0.3).astype(np.float32)
-    best_bbox_np = (pred_best_bbox[0].squeeze().cpu().numpy() > 0.3).astype(np.float32)
-
-    fig, axs = plt.subplots(2, 3, figsize=(15, 8))
-
-    axs[0, 0].imshow(x_denorm)
-    axs[0, 0].set_title(f"Image: {image_id}")
-
-    axs[0, 1].imshow(trimap_np, cmap="gray")
-    axs[0, 1].set_title("Trimap (GT)")
-
-    axs[0, 2].imshow(cam_np, cmap="gray")
-    axs[0, 2].set_title("Raw CAM")
-
-    axs[1, 0].imshow(masked_np, cmap="gray")
-    axs[1, 0].set_title("CAM with BBox")
-    if bbox:
-        xmin, ymin, xmax, ymax = map(int, bbox)
-        rect = patches.Rectangle((xmin, ymin), xmax - xmin, ymax - ymin,
-                                 linewidth=2, edgecolor='red', facecolor='none')
-        axs[1, 0].add_patch(rect)
-
-    axs[1, 1].imshow(best_nobbox_np, cmap="gray")
-    axs[1, 1].set_title("Best UNet w/o BBox")
-
-    axs[1, 2].imshow(best_bbox_np, cmap="gray")
-    axs[1, 2].set_title("Best UNet with BBox")
-
-    for ax in axs.flat:
-        ax.axis("off")
-    plt.tight_layout()
-
-    if return_fig:
-        return fig
-    else:
-        plt.show()
-
-
 
 # ======== 主流程 ========
 if __name__ == "__main__":
@@ -317,43 +256,3 @@ if __name__ == "__main__":
     else:
         print("best_unet_nobbox.pth not found.")
         
-    # ====== 可视化 N 张图（仅使用 best 模型）=======
-    N = 5
-    x_batch, _, image_ids, _ = next(iter(test_loader))
-    x_batch = x_batch.to(device)
-    raw_cam_batch = get_cam(image_ids)
-    trimap_batch = get_trimap(image_ids)
-
-    with torch.no_grad():
-        pred_best_bbox_batch = best_unet_bbox(x_batch) if best_unet_bbox else None
-        pred_best_nobbox_batch = best_unet_nobbox(x_batch) if best_unet_nobbox else None
-
-    for i in range(N):
-        x = x_batch[i]
-        cam = raw_cam_batch[i]
-        trimap = trimap_batch[i, 0]
-
-        pred_best_bbox = pred_best_bbox_batch[i].unsqueeze(0) if pred_best_bbox_batch is not None else None
-        pred_best_nobbox = pred_best_nobbox_batch[i].unsqueeze(0) if pred_best_nobbox_batch is not None else None
-
-        masked_cam = cam.clone()
-        bbox = dataset.bbox_dict.get(image_ids[i])
-        if bbox:
-            _, H, W = cam.shape
-            xmin, ymin, xmax, ymax = bbox
-            bbox_mask = torch.zeros((H, W), device=device)
-            bbox_mask[ymin:ymax, xmin:xmax] = 1.0
-            masked_cam = masked_cam.float() * bbox_mask
-
-        # ✅ 可视化仅包含 best 模型
-        fig = visualize_comparison_v2(
-            x.cpu(), image_ids[i], trimap.cpu(),
-            cam.cpu(), masked_cam.cpu(), bbox=bbox,
-            pred_best_nobbox=pred_best_nobbox.cpu() if pred_best_nobbox is not None else None,
-            pred_best_bbox=pred_best_bbox.cpu() if pred_best_bbox is not None else None,
-            return_fig=True
-        )
-
-        os.makedirs("outputs_bbox", exist_ok=True)
-        fig.savefig(f"outputs_bbox/best_only_{i}_{image_ids[i]}.png")
-        plt.close(fig)

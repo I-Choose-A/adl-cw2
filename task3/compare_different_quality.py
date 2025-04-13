@@ -172,56 +172,6 @@ def denormalize(tensor, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]):
     tensor.mul_(std).add_(mean)
     return tensor.clamp_(0, 1)
 
-def visualize_set(trimap_tensor, cam, cam_5, cam_10,
-                  base_pred, best_5_pred, best_10_pred, image_id,
-                  save_dir="outputs_noise"):
-    import matplotlib.pyplot as plt
-    os.makedirs(save_dir, exist_ok=True)
-
-    def to_np(tensor):
-        return tensor.squeeze().detach().cpu().numpy()
-
-    def to_bin_np(tensor):
-        return (to_np(tensor) > 0.3).astype(float)
-
-    # 图像数据
-    trimap_np = to_np(trimap_tensor)
-    cam_np = to_np(cam)
-    cam_5_np = to_np(cam_5)
-    cam_10_np = to_np(cam_10)
-    base_np = to_bin_np(base_pred)
-    best_5_np = to_bin_np(best_5_pred)
-    best_10_np = to_bin_np(best_10_pred)
-
-    titles = [
-        "Trimap", "Raw CAM", "CAM w/ 5% Noise",
-        "CAM w/ 10% Noise", "Best Unet Prediction",
-        "Best 5% Prediction", "Best 10% Prediction"
-    ]
-    images = [
-        trimap_np, cam_np, cam_5_np,
-        cam_10_np, base_np,
-        best_5_np, best_10_np
-    ]
-
-    fig, axs = plt.subplots(3, 3, figsize=(12, 10))
-
-    for i in range(len(images)):
-        ax = axs.flat[i]
-        ax.imshow(images[i], cmap="gray")
-        ax.set_title(titles[i])
-        ax.axis("off")
-
-    # 隐藏多余 subplot
-    for j in range(len(images), 9):
-        axs.flat[j].axis("off")
-
-    plt.tight_layout()
-    save_path = os.path.join(save_dir, f"{image_id}_comparison.png")
-    plt.savefig(save_path)
-    plt.close()
-
-
     
 if __name__ == '__main__':
     
@@ -232,13 +182,13 @@ if __name__ == '__main__':
     if not os.path.exists("models/unet_dirty_5.pth"):
         train_unet(dirty_5_model,model_name="unet_dirty_5.pth", save_to="models/unet_dirty_5.pth",noise_ratio=0.05)
     else:
-        dirty_5_model.load_state_dict(torch.load("models/unet_dirty_5.pth"))
+        dirty_5_model.load_state_dict(torch.load("models/unet_dirty_5.pth",map_location=torch.device('cpu')))
 
     # 10%污染伪像素
     if not os.path.exists("models/unet_dirty_10.pth"):
         train_unet(dirty_10_model,model_name="unet_dirty_10.pth", save_to="models/unet_dirty_10.pth",noise_ratio=0.1)
     else:
-        dirty_10_model.load_state_dict(torch.load("models/unet_dirty_10.pth"))
+        dirty_10_model.load_state_dict(torch.load("models/unet_dirty_10.pth",map_location=torch.device('cpu')))
     
     best_5_model = UNet().to(device)
     best_10_model = UNet().to(device)
@@ -265,33 +215,3 @@ if __name__ == '__main__':
         evaluate_model(best_10_model,test_loader=test_loader,device=device)
     else:
         print("best_unet_dirty_10.pth not found.")
-
-    x_batch, _, image_ids, _ = next(iter(test_loader))
-    x_batch = x_batch.to(device)
-    cam_batch = get_cam(image_ids).to(device)
-    trimap_batch = get_trimap(image_ids).to(device)
-
-    # 模型推理
-    with torch.no_grad():
-        base_preds = base_model(x_batch)  # 新增
-        best_5_preds = best_5_model(x_batch)
-        best_10_preds = best_10_model(x_batch)
-
-    # 生成图像对比
-    for i in range(5):
-        cam = (cam_batch[i:i+1] > 0.3).float()
-        cam_5 = corrupt_mask(cam, corruption_prob=0.05)
-        cam_10 = corrupt_mask(cam, corruption_prob=0.1)
-
-        visualize_set(
-            trimap_batch[i],
-            cam[0].cpu(),
-            cam_5[0].cpu(),
-            cam_10[0].cpu(),
-            base_preds[i].cpu(),          # ✅ 新增 base model 输出
-            best_5_preds[i].cpu(),
-            best_10_preds[i].cpu(),
-            image_ids[i]
-        )
-
-
