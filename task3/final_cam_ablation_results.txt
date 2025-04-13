@@ -1,0 +1,15 @@
+5 epoch
+ResNet: resnet18, CAM Thresh: 0.3, IoU: 0.5300
+ResNet: resnet18, CAM Thresh: 0.5, IoU: 0.5064
+ResNet: resnet18, CAM Thresh: 0.7, IoU: 0.4808
+ResNet: resnet34, CAM Thresh: 0.3, IoU: 0.4688
+ResNet: resnet34, CAM Thresh: 0.5, IoU: 0.4438
+ResNet: resnet34, CAM Thresh: 0.7, IoU: 0.4165
+ResNet: resnet50, CAM Thresh: 0.3, IoU: 0.5659
+ResNet: resnet50, CAM Thresh: 0.5, IoU: 0.5477
+ResNet: resnet50, CAM Thresh: 0.7, IoU: 0.5277
+
+20epoch
+ResNet: resnet50, CAM Thresh: 0.3, IoU: 0.5742
+ResNet: resnet50, CAM Thresh: 0.5, IoU: 0.5572
+ResNet: resnet50, CAM Thresh: 0.7, IoU: 0.5381
