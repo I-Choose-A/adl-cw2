@@ -1,41 +1,33 @@
 import os
-
 import numpy as np
 import torch
 import torch.nn.functional as F
 from PIL import Image
 from torchvision import transforms
-import kornia.filters as kf  # 添加kornia用于边缘检测
+import kornia.filters as kf
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
-# 内存优化的PyTorch CRF实现 - 修复版
 class DenseCRF(torch.nn.Module):
     def __init__(self, iter_max=5):
         super(DenseCRF, self).__init__()
         self.iter_max = iter_max
 
     def forward(
-        self,
-        img,
-        unary,
-        sxy_gaussian=3,
-        compat_gaussian=10,
-        sxy_bilateral=20,
-        srgb_bilateral=10,
-        compat_bilateral=3,
+            self,
+            img,
+            unary,
+            sxy_gaussian=3,
+            compat_gaussian=10,
+            sxy_bilateral=20,
+            srgb_bilateral=10,
+            compat_bilateral=3,
     ):
-        """
-        Args:
-            img: RGB图像 [3, H, W]
-            unary: 一元势 [2, H, W] - 背景和前景的概率
-            其他参数：CRF的超参数
-        """
         h, w = img.shape[1], img.shape[2]
         n_labels = unary.shape[0]
 
-        # 使用更小的图像尺寸进行处理，避免内存问题
+        # use smaller image size to avoid memory issues
         max_side = 64
         if h > max_side or w > max_side:
             scale_factor = max_side / max(h, w)
@@ -52,7 +44,7 @@ class DenseCRF(torch.nn.Module):
                 align_corners=False,
             )[0]
 
-            # 直接处理小图像版本
+            # process the smaller version directly
             Q_small = self._dense_crf(
                 img_small,
                 unary_small,
@@ -63,7 +55,7 @@ class DenseCRF(torch.nn.Module):
                 compat_bilateral,
             )
 
-            # 上采样回原尺寸
+            # upsample back to original size
             Q = F.interpolate(
                 Q_small.unsqueeze(0), size=(h, w), mode="bilinear", align_corners=False
             )[0]
@@ -79,86 +71,85 @@ class DenseCRF(torch.nn.Module):
                 compat_bilateral,
             )
 
+    # actual CRF computation for smaller images
     def _dense_crf(
-        self,
-        img,
-        unary,
-        sxy_gaussian=3,
-        compat_gaussian=10,
-        sxy_bilateral=20,
-        srgb_bilateral=10,
-        compat_bilateral=3,
+            self,
+            img,
+            unary,
+            sxy_gaussian=3,
+            compat_gaussian=10,
+            sxy_bilateral=20,
+            srgb_bilateral=10,
+            compat_bilateral=3,
     ):
-        """实际的CRF计算，用于较小图像"""
         h, w = img.shape[1], img.shape[2]
         n_labels = unary.shape[0]
         n_pixels = h * w
 
-        # 初始化Q为一元势的概率
+        # initialize Q with unary potentials
         Q = unary.clone()
 
-        # 直接使用高斯滤波器方法，避免全尺寸成对矩阵
+        # use gaussian filter approach to avoid full pairwise matrices
         for _ in range(self.iter_max):
-            # 对Q进行softmax处理
+            # apply softmax to Q
             Q = F.softmax(Q, dim=0)
 
-            # 准备消息
+            # prepare messages
             message = torch.zeros_like(Q)
 
-            # 1. 空间高斯消息传递 - 使用可分离卷积近似
+            # spatial gaussian message passing - using separable convolution approximation
             for label in range(n_labels):
-                # 使用高斯模糊近似消息传递
-                feat = Q[label : label + 1]  # [1, H, W]
-                # 滤波器大小与sigma成正比
+                # use gaussian blur to approximate message passing
+                feat = Q[label: label + 1]  # [1, H, W]
+                # filter size proportional to sigma
                 ksize = int(2 * sxy_gaussian) * 2 + 1
-                # 对特征图应用可分离高斯滤波
+                # apply separable gaussian filtering
                 blurred = self._gaussian_blur(feat, ksize, sxy_gaussian)
-                # 计算消息
-                message[label : label + 1] += compat_gaussian * (blurred - feat)
+                # compute message
+                message[label: label + 1] += compat_gaussian * (blurred - feat)
 
-            # 2. 双边消息传递 - 使用引导滤波器近似
+            # bilateral message passing - using guided filter approximation
             for label in range(n_labels):
-                # 使用引导滤波近似双边滤波
-                feat = Q[label : label + 1]  # [1, H, W]
+                # use guided filter to approximate bilateral filter
+                feat = Q[label: label + 1]  # [1, H, W]
                 guided = self._guided_filter(img, feat, sxy_bilateral, srgb_bilateral)
-                message[label : label + 1] += compat_bilateral * (guided - feat)
+                message[label: label + 1] += compat_bilateral * (guided - feat)
 
-            # 更新Q
+            # update Q
             Q = unary - message
 
-        # 最终的Q
+        # final Q
         Q = F.softmax(Q, dim=0)
         return Q
 
+    # implement gaussian blur using separable convolution
     def _gaussian_blur(self, x, kernel_size, sigma):
-        """使用可分离卷积实现高斯模糊"""
-        # 创建1D高斯核
+        # create 1D gaussian kernel
         grid = (
-            torch.arange(kernel_size, device=x.device).float() - (kernel_size - 1) / 2
+                torch.arange(kernel_size, device=x.device).float() - (kernel_size - 1) / 2
         )
-        gaussian = torch.exp(-(grid**2) / (2 * sigma**2))
+        gaussian = torch.exp(-(grid ** 2) / (2 * sigma ** 2))
         kernel = gaussian / gaussian.sum()
 
-        # 应用可分离卷积
+        # apply separable convolution
         padding = (kernel_size - 1) // 2
 
-        # 创建卷积权重
+        # create convolution weights
         weight_h = kernel.view(1, 1, kernel_size, 1).repeat(1, 1, 1, 1)
         weight_w = kernel.view(1, 1, 1, kernel_size).repeat(1, 1, 1, 1)
 
-        # 水平方向卷积
+        # horizontal convolution
         x = F.conv2d(x, weight_h, padding=(padding, 0), groups=1)
-        # 垂直方向卷积
+        # vertical convolution
         x = F.conv2d(x, weight_w, padding=(0, padding), groups=1)
         return x
 
     def _guided_filter(self, guide, src, radius, eps):
-        """引导滤波器，用于近似双边滤波"""
-        # 记录原始维度以便后续处理
+        # record original dimensions for later processing
         guide_dim = guide.dim()
         src_dim = src.dim()
 
-        # 确保guide和src都是4D张量 [N,C,H,W]
+        # ensure guide and src are 4D tensors [N,C,H,W]
         if guide_dim == 3:  # [C,H,W]
             guide = guide.unsqueeze(0)
         elif guide_dim == 2:  # [H,W]
@@ -169,7 +160,7 @@ class DenseCRF(torch.nn.Module):
         elif src_dim == 2:  # [H,W]
             src = src.unsqueeze(0).unsqueeze(0)
 
-        # 确保guide和src具有相同的空间维度
+        # ensure guide and src have same spatial dimensions
         if guide.shape[2:] != src.shape[2:]:
             src = F.interpolate(
                 src,
@@ -178,44 +169,44 @@ class DenseCRF(torch.nn.Module):
                 align_corners=False,
             )
 
-        # 将多通道guide转为单通道
+        # convert multi-channel guide to single channel
         if guide.shape[1] > 1:
             guide = guide.mean(dim=1, keepdim=True)  # [N, 1, H, W]
 
-        # 均值滤波器
+        # mean filter
         kernel_size = int(2 * radius) + 1
         padding = (kernel_size - 1) // 2
 
-        # 创建均值卷积核
+        # create mean convolution kernel
         mean_kernel = torch.ones(
             1, 1, kernel_size, kernel_size, device=guide.device
-        ) / (kernel_size**2)
+        ) / (kernel_size ** 2)
 
-        # 计算均值
+        # compute means
         mean_guide = F.conv2d(guide, mean_kernel, padding=padding)
         mean_src = F.conv2d(src, mean_kernel, padding=padding)
         mean_guide_src = F.conv2d(guide * src, mean_kernel, padding=padding)
 
-        # 计算协方差
+        # compute covariance
         cov_guide_src = mean_guide_src - mean_guide * mean_src
 
-        # 计算自方差
+        # compute variance
         var_guide = (
-            F.conv2d(guide * guide, mean_kernel, padding=padding) - mean_guide**2
+                F.conv2d(guide * guide, mean_kernel, padding=padding) - mean_guide ** 2
         )
 
-        # 计算a和b
+        # compute a and b
         a = cov_guide_src / (var_guide + eps)
         b = mean_src - a * mean_guide
 
-        # 计算均值a和均值b
+        # compute mean a and mean b
         mean_a = F.conv2d(a, mean_kernel, padding=padding)
         mean_b = F.conv2d(b, mean_kernel, padding=padding)
 
-        # 明确检查并处理尺寸
-        target_size = (guide.shape[2], guide.shape[3])  # 明确指定为(H,W)元组
+        # explicitly check and handle dimensions
+        target_size = (guide.shape[2], guide.shape[3])  # explicitly specified as (H,W) tuple
 
-        # 确保尺寸一致
+        # ensure dimensions match
         if mean_a.shape[2:] != guide.shape[2:]:
             mean_a = F.interpolate(
                 mean_a, size=target_size, mode="bilinear", align_corners=False
@@ -226,10 +217,10 @@ class DenseCRF(torch.nn.Module):
                 mean_b, size=target_size, mode="bilinear", align_corners=False
             )
 
-        # 最终输出
+        # final output
         output = mean_a * guide + mean_b
 
-        # 恢复原始维度
+        # restore original dimensions
         if guide_dim == 3 and output.dim() == 4:
             output = output.squeeze(0)
         elif guide_dim == 2 and output.dim() == 4:
@@ -246,38 +237,38 @@ def create_cam(model, x, y, image_ids):
     x = x.to(device)
     y = y.to(device)
 
-    # 数据增强生成多个视角
+    # data augmentation to generate multiple views
     transforms_list = [
-        # 原始图像
+        # original image
         lambda img: img,
-        # 水平翻转
+        # horizontal flip
         lambda img: torch.flip(img, dims=[-1]),
-        # 旋转10度
+        # rotate 10 degrees
         lambda img: torch.nn.functional.affine_grid(
             torch.tensor([[[1, 0, 0], [0, 1, 0]]], device=device)
             * torch.cos(torch.tensor(10 * np.pi / 180)),
             size=torch.Size((1, img.shape[0], img.shape[1], img.shape[2])),
             align_corners=False,
         ).to(device),
-        # 缩放0.9倍
+        # scale by 0.9
         lambda img: F.interpolate(
             img.unsqueeze(0), scale_factor=0.9, mode="bilinear", align_corners=False
         )[0],
     ]
 
-    # 存储所有增强版本的CAM
+    # store CAMs for all augmented versions
     all_cams = []
 
-    # 对每个增强版本生成CAM
+    # generate CAM for each augmented version
     for transform_fn in transforms_list:
-        # 跳过需要复杂操作的变换（仅保留前两种简单变换用于演示）
+        # skip complex transforms (only keep first two simple transforms for demo)
         if transform_fn == transforms_list[2] or transform_fn == transforms_list[3]:
             continue
 
-        # 应用变换
+        # apply transform
         transformed_x = torch.stack([transform_fn(img) for img in x])
 
-        # 收集不同层级的特征图
+        # collect features from different layers
         features_layer1 = []
         features_layer2 = []
         features_layer3 = []
@@ -287,7 +278,7 @@ def create_cam(model, x, y, image_ids):
         gradients_layer3 = []
         gradients_layer4 = []
 
-        # hook方法收集特征图
+        # hook methods to collect feature maps
         def hook_feature_layer1(module, input, output):
             features_layer1.append(output)
 
@@ -300,7 +291,7 @@ def create_cam(model, x, y, image_ids):
         def hook_feature_layer4(module, input, output):
             features_layer4.append(output)
 
-        # hook方法收集梯度图
+        # hook methods to collect gradient maps
         def hook_grad_layer1(module, grad_input, grad_output):
             gradients_layer1.append(grad_output[0])
 
@@ -313,7 +304,7 @@ def create_cam(model, x, y, image_ids):
         def hook_grad_layer4(module, grad_input, grad_output):
             gradients_layer4.append(grad_output[0])
 
-        # 注册前向和反向钩子
+        # register forward and backward hooks
         handle_layer1 = model.layer1[-1].conv2.register_forward_hook(
             hook_feature_layer1
         )
@@ -339,16 +330,16 @@ def create_cam(model, x, y, image_ids):
             hook_grad_layer4
         )
 
-        # 前向传播
+        # forward pass
         logits = model(transformed_x)
 
-        model.zero_grad()  # 梯度清零
+        model.zero_grad()  # clear gradients
 
-        # 只计算目标类别的梯度
+        # only compute gradients for target class
         one_hot_y = F.one_hot(y, num_classes=37).to(device)
         logits.backward(gradient=one_hot_y, retain_graph=True)
 
-        # 移除hook
+        # remove hooks
         handle_layer1.remove()
         handle_layer2.remove()
         handle_layer3.remove()
@@ -358,7 +349,7 @@ def create_cam(model, x, y, image_ids):
         handle_grad_layer3.remove()
         handle_grad_layer4.remove()
 
-        # 只使用第一次调用的数据
+        # only use data from first call
         features_layer1 = features_layer1[0]  # shape = (B,C,H,W)
         features_layer2 = features_layer2[0]  # shape = (B,C,H,W)
         features_layer3 = features_layer3[0]  # shape = (B,C,H,W)
@@ -368,25 +359,25 @@ def create_cam(model, x, y, image_ids):
         gradients_layer3 = gradients_layer3[0]  # shape = (B,C,H,W)
         gradients_layer4 = gradients_layer4[0]  # shape = (B,C,H,W)
 
-        # 添加通道注意力机制
+        # add channel attention mechanism
         def channel_attention(features, gradients):
-            # 计算通道重要性
+            # compute channel importance
             channel_weights = torch.sum(torch.abs(gradients), dim=[2, 3], keepdim=True)
             channel_weights = F.softmax(channel_weights, dim=1)
-            # 应用通道注意力
+            # apply channel attention
             weighted_features = features * channel_weights
             return weighted_features
 
-        # 应用通道注意力到所有层
+        # apply channel attention to all layers
         features_layer1 = channel_attention(features_layer1, gradients_layer1)
         features_layer2 = channel_attention(features_layer2, gradients_layer2)
         features_layer3 = channel_attention(features_layer3, gradients_layer3)
         features_layer4 = channel_attention(features_layer4, gradients_layer4)
 
-        # 分别计算所有层的GradCAM++
-        # 定义一个GradCAM++计算的函数
+        # compute GradCAM++ for all layers separately
+        # define a function to calculate GradCAM++
         def calculate_gradcam_pp(features, gradients):
-            grad_2 = gradients**2
+            grad_2 = gradients ** 2
             grad_3 = grad_2 * gradients
 
             alpha_num = grad_2
@@ -399,16 +390,16 @@ def create_cam(model, x, y, image_ids):
             cam = F.relu(cam)
             return cam
 
-        # 计算每一层的CAM
+        # compute CAM for each layer
         cam_layer1 = calculate_gradcam_pp(features_layer1, gradients_layer1)
         cam_layer2 = calculate_gradcam_pp(features_layer2, gradients_layer2)
         cam_layer3 = calculate_gradcam_pp(features_layer3, gradients_layer3)
         cam_layer4 = calculate_gradcam_pp(features_layer4, gradients_layer4)
 
-        # 将所有CAM调整到相同大小(使用layer4的尺寸作为基准)
+        # resize all CAMs to same size (using layer4 size as reference)
         target_size = cam_layer4.shape[1:]
 
-        # 上采样其他层的CAM到target_size
+        # upsample other layers' CAMs to target_size
         def upsample_cam(cam, target_size):
             return F.interpolate(
                 cam.unsqueeze(1), size=target_size, mode="bilinear", align_corners=False
@@ -418,10 +409,10 @@ def create_cam(model, x, y, image_ids):
         cam_layer2 = upsample_cam(cam_layer2, target_size)
         cam_layer3 = upsample_cam(cam_layer3, target_size)
 
-        # 归一化所有层的CAM
+        # normalize all layers' CAMs
         def normalize_cam(cam):
             return (cam - cam.amin(dim=(1, 2), keepdim=True)[0]) / (
-                cam.amax(dim=(1, 2), keepdim=True)[0] + 1e-8
+                    cam.amax(dim=(1, 2), keepdim=True)[0] + 1e-8
             )
 
         cam_layer1 = normalize_cam(cam_layer1)
@@ -429,13 +420,13 @@ def create_cam(model, x, y, image_ids):
         cam_layer3 = normalize_cam(cam_layer3)
         cam_layer4 = normalize_cam(cam_layer4)
 
-        # 计算层级清晰度指标
+        # compute layer clarity metric
         def calculate_clarity(cam):
-            # 使用梯度幅值作为清晰度指标
+            # use gradient magnitude as clarity metric
             grad_x = torch.abs(cam[:, :, 1:] - cam[:, :, :-1])
             grad_y = torch.abs(cam[:, 1:, :] - cam[:, :-1, :])
 
-            # 平均梯度幅值
+            # average gradient magnitude
             clarity = (torch.mean(grad_x) + torch.mean(grad_y)) / 2
             return clarity
 
@@ -444,42 +435,42 @@ def create_cam(model, x, y, image_ids):
         clarity_layer3 = calculate_clarity(cam_layer3)
         clarity_layer4 = calculate_clarity(cam_layer4)
 
-        # 计算自适应权重
+        # compute adaptive weights
         total_clarity = (
-            clarity_layer1 + clarity_layer2 + clarity_layer3 + clarity_layer4 + 1e-8
+                clarity_layer1 + clarity_layer2 + clarity_layer3 + clarity_layer4 + 1e-8
         )
 
-        # 基础权重 - 偏向高层级特征
+        # base weights - biased toward higher-level features
         base_weights = torch.tensor([0.1, 0.2, 0.3, 0.4], device=device)
 
-        # 清晰度权重
+        # clarity weights
         clarity_weights = (
-            torch.tensor(
-                [clarity_layer1, clarity_layer2, clarity_layer3, clarity_layer4],
-                device=device,
-            )
-            / total_clarity
+                torch.tensor(
+                    [clarity_layer1, clarity_layer2, clarity_layer3, clarity_layer4],
+                    device=device,
+                )
+                / total_clarity
         )
 
-        # 融合基础和清晰度权重
-        alpha = 0.7  # 控制基础权重的影响
+        # fuse base and clarity weights
+        alpha = 0.7  # controls influence of base weights
         fusion_weights = alpha * base_weights + (1 - alpha) * clarity_weights
 
-        # 归一化权重和
+        # normalize weight sum
         fusion_weights = fusion_weights / fusion_weights.sum()
 
-        # 应用多层融合
+        # apply multi-layer fusion
         cam = (
-            fusion_weights[0] * cam_layer1
-            + fusion_weights[1] * cam_layer2
-            + fusion_weights[2] * cam_layer3
-            + fusion_weights[3] * cam_layer4
+                fusion_weights[0] * cam_layer1
+                + fusion_weights[1] * cam_layer2
+                + fusion_weights[2] * cam_layer3
+                + fusion_weights[3] * cam_layer4
         )
 
-        # 再次归一化并继续之前的处理
+        # normalize again and continue previous processing
         cam = normalize_cam(cam)
 
-        # 上采样到输入尺寸
+        # upsample to input size
         cam = F.interpolate(
             cam.unsqueeze(1),
             size=(x.shape[2], x.shape[3]),
@@ -487,31 +478,31 @@ def create_cam(model, x, y, image_ids):
             align_corners=False,
         )
 
-        # 如果是水平翻转的数据，需要翻转回来
+        # if it's horizontally flipped data, flip it back
         if transform_fn == transforms_list[1]:
             cam = torch.flip(cam, dims=[-1])
 
-        # 添加到列表
+        # add to list
         all_cams.append(cam)
 
-    # 集成多个视角的CAM (取平均)
+    # ensemble CAMs from multiple views (take average)
     ensemble_cam = torch.mean(torch.cat(all_cams, dim=1), dim=1, keepdim=True)
 
-    # 改进的边缘感知增强
+    # improved edge-aware enhancement
     for i in range(x.shape[0]):
-        # 获取原始CAM和图像
+        # get original CAM and image
         img_tensor = x[i]  # [3, H, W]
         cam_tensor = ensemble_cam[i, 0]  # [H, W]
 
-        # 多边缘检测器融合
-        # Sobel边缘
+        # multi-edge detector fusion
+        # sobel edges
         sobel_edges = kf.sobel(img_tensor.mean(dim=0, keepdim=True).unsqueeze(0))
-        # Laplacian边缘
+        # laplacian edges
         laplacian_edges = kf.laplacian(
             img_tensor.mean(dim=0, keepdim=True).unsqueeze(0), kernel_size=3
         )
 
-        # 融合多种边缘
+        # fuse multiple edges
         edges = 0.6 * sobel_edges + 0.4 * laplacian_edges
 
         edges = F.interpolate(
@@ -522,69 +513,69 @@ def create_cam(model, x, y, image_ids):
         )
         edges = edges.squeeze()  # [H, W]
 
-        # 归一化边缘强度
+        # normalize edge strength
         edges = (edges - edges.min()) / (edges.max() - edges.min() + 1e-8)
 
-        # 自适应边缘阈值 - 基于边缘分布
+        # adaptive edge threshold - based on edge distribution
         edge_threshold = (
-            torch.quantile(edges.view(-1), 0.7) * 0.8
-        )  # 取70%分位数的80%作为阈值
-        edge_weight = edges > edge_threshold  # 自适应边缘阈值
+                torch.quantile(edges.view(-1), 0.7) * 0.8
+        )  # take 80% of 70th percentile as threshold
+        edge_weight = edges > edge_threshold  # adaptive edge threshold
 
-        # 边缘感知调整：锐化边界处的CAM值
+        # edge-aware adjustment: sharpen CAM values at boundaries
         cam_tensor_adjusted = cam_tensor.clone()
 
-        # 提高边缘处的CAM对比度 - 梯度增强
-        edge_intensity = (edges - edge_threshold).clamp(0, 1) * 0.5  # 边缘强度
-        cam_enhancement = 1.0 + edge_intensity  # 边缘处增强系数
+        # increase CAM contrast at edges - gradient enhancement
+        edge_intensity = (edges - edge_threshold).clamp(0, 1) * 0.5  # edge strength
+        cam_enhancement = 1.0 + edge_intensity  # enhancement factor at edges
 
-        # 应用边缘增强
+        # apply edge enhancement
         cam_tensor_adjusted = torch.where(
             edge_weight,
-            torch.clamp(cam_tensor * cam_enhancement, 0, 1),  # 边缘处增强
-            cam_tensor,  # 非边缘处保持不变
+            torch.clamp(cam_tensor * cam_enhancement, 0, 1),  # enhance at edges
+            cam_tensor,  # keep unchanged elsewhere
         )
 
-        # 更新CAM
+        # update CAM
         ensemble_cam[i, 0] = cam_tensor_adjusted
 
-        # 保存结果
+        # save results
         single_cam = ensemble_cam[i, 0].detach().cpu()  # (H,W)
         torch.save(single_cam, f"data/CAM/{image_ids[i]}.pt")
 
-    # 创建CRF模型并移至GPU
-    dense_crf = DenseCRF(iter_max=10).to(device)  # 减少迭代次数，但优化其他参数
+    # create CRF model and move to GPU
+    dense_crf = DenseCRF(iter_max=10).to(device)  # reduce iterations but optimize other params
 
-    # CRF Processing (per image in batch)
+    # CRF processing (per image in batch)
     for i in range(x.shape[0]):
-        # 获取图像和CAM数据，保持在GPU上
+        # get image and CAM data, keep on GPU
         img_tensor = x[i].to(device)  # [3, H, W]
         cam_tensor = ensemble_cam[i, 0].to(device)  # [H, W]
 
-        # 清理GPU缓存减少内存碎片
+        # clear GPU cache to reduce memory fragmentation
         torch.cuda.empty_cache()
 
-        # 跳过无效图像
+        # skip invalid images
         if torch.max(cam_tensor) < 0.1:
             continue
 
-        # 基于图像特性自适应调整CRF参数
-        # 计算图像复杂度 - 基于边缘密度
+        # adapt CRF params based on image characteristics
+        # compute image complexity - based on edge density
         img_gray = img_tensor.mean(dim=0)
         img_edges = kf.sobel(img_gray.unsqueeze(0).unsqueeze(0))
-        edge_density = torch.mean((img_edges > 0.1).float())  # 将布尔值转换为浮点数
+        edge_density = torch.mean((img_edges > 0.1).float())  # convert bool to float
 
-        # 根据图像复杂度自适应调整参数
-        sxy_gaussian = 3 if edge_density > 0.1 else 5  # 复杂图像使用更小的高斯窗口
-        compat_gaussian = 8 + 8 * edge_density  # 复杂图像增大兼容性参数
-        sxy_bilateral = 20 + 10 * (1 - edge_density)  # 简单图像使用更大的双边窗口
-        srgb_bilateral = 8 + 7 * edge_density  # 复杂图像增大颜色敏感度
-        compat_bilateral = 4 + 3 * edge_density  # 复杂图像增大兼容性
+        # adapt params based on image complexity
+        sxy_gaussian = 3 if edge_density > 0.1 else 5  # complex images use smaller gaussian window
+        compat_gaussian = 8 + 8 * edge_density  # complex images increase compatibility param
+        sxy_bilateral = 20 + 10 * (1 - edge_density)  # simple images use larger bilateral window
+        srgb_bilateral = 8 + 7 * edge_density  # complex images increase color sensitivity
+        compat_bilateral = 4 + 3 * edge_density  # complex images increase compatibility
 
-        # 准备一元势（在GPU上）
+        # prepare unary potentials (on GPU)
         unary = torch.stack([1 - cam_tensor, cam_tensor], dim=0)  # [2, H, W]
 
-        # 执行CRF推理 - 使用自适应参数
+        # perform CRF inference - with adaptive params
         Q = dense_crf(
             img_tensor,
             unary,
@@ -595,10 +586,10 @@ def create_cam(model, x, y, image_ids):
             compat_bilateral=compat_bilateral,
         )
 
-        # 获取最终结果
+        # get final result
         refined = torch.argmax(Q, dim=0)  # [H, W]
 
-        # 保存结果
+        # save result
         torch.save(refined, f"data/CAM/{image_ids[i]}.pt")
 
 
