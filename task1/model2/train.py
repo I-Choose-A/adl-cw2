@@ -84,7 +84,7 @@ def train_classifier(model):
         print(f"EPOCH: {epoch + 1}/{epochs}, train_loss: {train_loss}, train_acc: {train_acc * 100:.2f}% "
               f"val_loss: {val_loss}, val_acc: {val_acc * 100:.2f}%, {datetime.datetime.now()}")
 
-    torch.save(model.state_dict(), "Task1/models/resnet18.pth")
+    torch.save(model.state_dict(), "task1/model2/models/resnet18.pth")
 
 
 def train_deeplab(model):
@@ -138,7 +138,7 @@ def train_deeplab(model):
               f"val_iou: {val_iou}, {datetime.datetime.now()}")
         model.train()
 
-    torch.save(model.state_dict(), "Task1/models/deeplabv3.pth")
+    torch.save(model.state_dict(), "task1/model2/models/deeplabv3.pth")
 
 
 # 逆转归一化
@@ -155,7 +155,7 @@ if __name__ == '__main__':
     if not os.path.exists("Task1/models/resnet18.pth"):
         train_classifier(resnet)
     else:
-        resnet.load_state_dict(torch.load("Task1/models/resnet18.pth"))
+        resnet.load_state_dict(torch.load("task1/model2/models/resnet18.pth"))
 
     # The CAM creation step is removed in supervised training
 
@@ -163,10 +163,10 @@ if __name__ == '__main__':
     resnet = resnet.to('cpu')
     torch.cuda.empty_cache()
 
-    if not os.path.exists("Task1/models/deeplabv3.pth"):
+    if not os.path.exists("task1/model2/models/deeplabv3.pth"):
         train_deeplab(deeplabv3)
     else:
-        deeplabv3.load_state_dict(torch.load("Task1/models/deeplabv3.pth"))
+        deeplabv3.load_state_dict(torch.load("task1/model2/models/deeplabv3.pth"))
 
     # test
     deeplabv3.eval()
