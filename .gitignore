@@ -9,8 +9,8 @@ Task2-Weakly_Supersive_learning/data/
 output/
 */output/
 Task2-Weakly_Supersive_learning/output/
-*.pth
-*.pth.tar
+# *.pth
+# *.pth.tar
 *.pt
 *.ckpt
 *.bin
