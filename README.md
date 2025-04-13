@@ -11,6 +11,23 @@ wget https://www.robots.ox.ac.uk/~vgg/data/pets/data/images.tar.gz
 mkdir -p images && tar -xzf images.tar.gz -C images --strip-components=1
 ```
 
+
+其次创建一个新的虚拟环境，我们要测试一下到底要用哪些包：
+```bash
+conda create -n cw2 python=3.12 pip
+```
+
+激活环境：
+```bash
+conda activate cw2
+```
+
+安装老师要求的包：
+```bash
+pip install torch==2.5.0 torchvision --index-url https://download.pytorch.org/whl/cpu
+```
+
+
 对于每个task，先进入该task的工作目录：
 
 例如：
