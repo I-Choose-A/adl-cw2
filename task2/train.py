@@ -110,7 +110,7 @@ def train_classifier(model):
         train_bar.clear()
         val_bar.clear()
         tqdm.write(
-            f"EPOCH: {epoch + 1}/{epochs}, train_loss: {train_loss}, train_acc: {train_acc * 100:.2f}% "
+            f"Epoch: {epoch + 1}/{epochs}, train_loss: {train_loss}, train_acc: {train_acc * 100:.2f}% "
             f"val_loss: {val_loss}, val_acc: {val_acc * 100:.2f}%"
         )
 
@@ -133,7 +133,7 @@ def train_unet(model):
             optimizer.zero_grad()
             cam = get_cam(image_ids)
 
-            mask = cam
+            mask = cam.float()
 
             pred_mask = model(x)
             loss = weighted_loss(pred_mask, mask)
@@ -172,7 +172,7 @@ def train_unet(model):
         train_bar.clear()
         val_bar.clear()
         tqdm.write(
-            f"EPOCH: {epoch + 1}/{epochs}, train_loss: {train_loss}, val_loss: {val_loss}, val_iou:{val_iou}"
+            f"Epoch: {epoch + 1}/{epochs}, train_loss: {train_loss}, val_loss: {val_loss}, val_iou:{val_iou}"
         )
 
     torch.save(model.state_dict(), "models/unet.pth")
@@ -196,7 +196,7 @@ if __name__ == "__main__":
     if not os.path.exists("data/CAM"):
         for loader in [train_loader, val_loader, test_loader]:
             # for loader in [test_loader]:
-            cam_bar = tqdm(loader, desc=f"创建CAM")
+            cam_bar = tqdm(loader, desc=f"Creating CAMs")
             for i, (x, y, ids) in enumerate(cam_bar):
                 create_cam(resnet, x, y, ids)
                 cam_bar.set_postfix({"batch": i})
@@ -243,7 +243,9 @@ if __name__ == "__main__":
     test_iou /= len(test_dataset)
     cam_iou /= len(test_dataset)
 
-    print(f"test_loss: {test_loss},test_iou:{test_iou}, {datetime.datetime.now()}, cam_iou:{cam_iou}")
+    print(
+        f"test_loss: {test_loss},test_iou:{test_iou}, {datetime.datetime.now()}, cam_iou:{cam_iou}"
+    )
 
     # display samples
     unet.eval()
@@ -252,11 +254,10 @@ if __name__ == "__main__":
     os.makedirs("output_images/val", exist_ok=True)
     os.makedirs("output_images/test", exist_ok=True)
 
-
     def save_images(loader, folder_name):
         print(f"Saving {folder_name} images...")
         for i, (x, y, image_ids) in enumerate(
-                tqdm(loader, desc=f"Saving {folder_name} images")
+            tqdm(loader, desc=f"Saving {folder_name} images")
         ):
             x = x.to(device)
 
@@ -324,7 +325,6 @@ if __name__ == "__main__":
                 combined_image.save(
                     f"output_images/{folder_name}/combined_{image_ids[j]}.png"
                 )
-
 
     # save images for train, validation and test sets
     save_images(train_loader, "train")

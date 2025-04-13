@@ -11,6 +11,17 @@ wget https://www.robots.ox.ac.uk/~vgg/data/pets/data/images.tar.gz
 mkdir -p images && tar -xzf images.tar.gz -C images --strip-components=1
 ```
 
+下载注释文件：
+```bash
+wget https://www.robots.ox.ac.uk/~vgg/data/pets/data/annotations.tar.gz
+```
+
+解压注释文件：
+```bash
+mkdir -p annotations && tar -xzf annotations.tar.gz -C annotations --strip-components=1
+```
+```
+
 
 其次创建一个新的虚拟环境，我们要测试一下到底要用哪些包：
 ```bash
