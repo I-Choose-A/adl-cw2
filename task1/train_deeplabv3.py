@@ -6,15 +6,12 @@ import torch
 from PIL import Image
 from torch.utils.data import DataLoader, random_split
 
-from ..data.dataset import OxfordIIITPet
-from eval import eval_classifier
-from models.resnet import ResNet18
 from models.deeplabv3 import DeepLabV3
+from task1.data.dataset import OxfordIIITPet
 from utils.loss import weighted_loss
 from utils.mask_utils import get_trimap
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-print(device)
 torch.manual_seed(2025)
 batch_size = 32
 
@@ -33,64 +30,13 @@ val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_w
 test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=4, pin_memory=True,
                          persistent_workers=True)
 
-resnet = ResNet18
 deeplabv3 = DeepLabV3()
-
-
-def train_classifier(model):
-    epochs = 10
-    optimizer = torch.optim.Adam(params=model.parameters(), lr=1e-4)
-    loss_function = torch.nn.CrossEntropyLoss()
-
-    model = model.to(device)
-
-    for epoch in range(epochs):
-        model.train()
-
-        train_correct = 0.
-        train_loss = 0.
-        for x, y, _ in train_loader:
-            x = x.to(device)
-            y = y.to(device)
-
-            optimizer.zero_grad()
-            y_pred = model(x)
-            loss = loss_function(y_pred, y)
-            loss.backward()
-            optimizer.step()
-
-            _, predicted = torch.max(y_pred, 1)
-            train_correct += (predicted == y).sum().item()
-            train_loss += loss.item() * x.shape[0]
-
-        train_acc = train_correct / len(train_dataset)
-        train_loss /= len(train_dataset)
-
-        # evaluation on validation dataset
-        model.eval()
-        val_correct = 0.
-        val_loss = 0.
-        for x, y, _ in val_loader:
-            x = x.to(device)
-            y = y.to(device)
-
-            val_batch_correct, val_batch_loss = eval_classifier(model, x, y)
-            val_correct += val_batch_correct
-            val_loss += val_batch_loss * x.shape[0]
-
-        val_acc = val_correct / len(val_dataset)
-        val_loss /= len(val_dataset)
-
-        print(f"EPOCH: {epoch + 1}/{epochs}, train_loss: {train_loss}, train_acc: {train_acc * 100:.2f}% "
-              f"val_loss: {val_loss}, val_acc: {val_acc * 100:.2f}%, {datetime.datetime.now()}")
-
-    torch.save(model.state_dict(), "task1/model2/models/resnet18.pth")
 
 
 def train_deeplab(model):
     print(f"start training DeepLabV3, {datetime.datetime.now()}")
 
-    epochs = 10
+    epochs = 1
     optimizer = torch.optim.AdamW(params=model.parameters(), lr=1e-4, weight_decay=1e-5)
     model = model.to(device)
 
@@ -138,7 +84,7 @@ def train_deeplab(model):
               f"val_iou: {val_iou}, {datetime.datetime.now()}")
         model.train()
 
-    torch.save(model.state_dict(), "task1/model2/models/deeplabv3.pth")
+    torch.save(model.state_dict(), "models/deeplabv3.pth")
 
 
 def denormalize(tensor, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]):
@@ -150,21 +96,11 @@ def denormalize(tensor, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]):
 
 
 if __name__ == '__main__':
-    if not os.path.exists("Task1/models/resnet18.pth"):
-        train_classifier(resnet)
-    else:
-        resnet.load_state_dict(torch.load("task1/model2/models/resnet18.pth"))
-
-    # The CAM creation step is removed in supervised training
-
     # clear cache to provide more space for training DeepLabV3
-    resnet = resnet.to('cpu')
-    torch.cuda.empty_cache()
-
-    if not os.path.exists("task1/model2/models/deeplabv3.pth"):
+    if not os.path.exists("models/deeplabv3.pth"):
         train_deeplab(deeplabv3)
     else:
-        deeplabv3.load_state_dict(torch.load("task1/model2/models/deeplabv3.pth"))
+        deeplabv3.load_state_dict(torch.load("models/deeplabv3.pth"))
 
     # test
     deeplabv3.eval()
