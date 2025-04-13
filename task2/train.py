@@ -135,15 +135,6 @@ def train_unet(model):
 
             mask = cam
 
-            # if epoch == 0:
-            #     mask = cam
-            # elif epoch < 3:
-            #     mask = 0.8 * cam + 0.2 * model(x).detach()
-            # else:
-            #     alpha = 0.2 + 0.02 * epoch
-            #     mask = (1 - alpha) * cam + alpha * model(x).detach()
-            # mask = torch.clamp(mask, 0, 1)
-
             pred_mask = model(x)
             loss = weighted_loss(pred_mask, mask)
 
@@ -187,15 +178,13 @@ def train_unet(model):
     torch.save(model.state_dict(), "models/unet.pth")
 
 
-# 1. 逆转归一化
+#
 def denormalize(tensor, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]):
-    """将归一化的Tensor逆转回原始值域"""
-    # 深拷贝避免修改原Tensor
     tensor = tensor.clone()
     mean = torch.tensor(mean).view(1, 3, 1, 1)
     std = torch.tensor(std).view(1, 3, 1, 1)
-    tensor.mul_(std).add_(mean)  # 逆运算：x = (x_norm * std) + mean
-    return tensor.clamp_(0, 1)  # 裁剪到[0,1]范围
+    tensor.mul_(std).add_(mean)  # x = (x_norm * std) + mean
+    return tensor.clamp_(0, 1)  # clip to [0,1]
 
 
 if __name__ == "__main__":
@@ -254,47 +243,46 @@ if __name__ == "__main__":
     test_iou /= len(test_dataset)
     cam_iou /= len(test_dataset)
 
-    print(
-        f"test_loss: {test_loss},test_iou:{test_iou}, {datetime.datetime.now()}, cam_iou:{cam_iou}"
-    )
+    print(f"test_loss: {test_loss},test_iou:{test_iou}, {datetime.datetime.now()}, cam_iou:{cam_iou}")
 
     # display samples
     unet.eval()
-    # 创建保存图像的目录
+    # creating directories to save images
     os.makedirs("output_images/train", exist_ok=True)
     os.makedirs("output_images/val", exist_ok=True)
     os.makedirs("output_images/test", exist_ok=True)
 
+
     def save_images(loader, folder_name):
-        print(f"正在保存{folder_name}图像...")
+        print(f"Saving {folder_name} images...")
         for i, (x, y, image_ids) in enumerate(
-            tqdm(loader, desc=f"保存{folder_name}图像")
+                tqdm(loader, desc=f"Saving {folder_name} images")
         ):
             x = x.to(device)
 
-            # 处理当前批次中的每个图像
+            # process each image in current batch
             for j in range(len(image_ids)):
-                # 创建一个宽幅图像来容纳所有图像
-                combined_width = 224 * 4  # 假设图像宽度为224
-                combined_height = 224 + 30  # 增加高度以容纳标题
+                # create a wide canvas to hold all images
+                combined_width = 224 * 4  # Assuming image width is 224
+                combined_height = 224 + 30  # Extra height for titles
                 combined_image = Image.new(
                     "RGB", (combined_width, combined_height), (255, 255, 255)
                 )
 
-                # 1. 原始图像
+                # original image
                 x_denorm = denormalize(x[j].unsqueeze(0).to("cpu"))
                 image_np = x_denorm.squeeze(0).permute(1, 2, 0).numpy()
                 image_uint8 = (image_np * 255).astype(np.uint8)
                 original_img = Image.fromarray(image_uint8)
 
-                # 2. trimap
+                # trimap
                 trimap = get_trimap([image_ids[j]])
                 trimap_binary = (trimap[0].squeeze(0) > 0.5).float() * 255
                 trimap_img = Image.fromarray(
                     trimap_binary.to("cpu").numpy().astype(np.uint8), mode="L"
                 ).convert("RGB")
 
-                # 3. 预测掩码
+                # predicted mask
                 with torch.no_grad():
                     pred_mask = unet(x[j].unsqueeze(0))
 
@@ -303,43 +291,44 @@ if __name__ == "__main__":
                     mask_binary.to("cpu").numpy().astype(np.uint8), mode="L"
                 ).convert("RGB")
 
-                # 4. CAM
+                # CAM
                 cam = get_cam([image_ids[j]])
                 cam_binary = cam[0].squeeze(0) * 255
                 cam_img = Image.fromarray(
                     cam_binary.to("cpu").numpy().astype(np.uint8), mode="L"
                 ).convert("RGB")
 
-                # 拼接图像
+                # composite images
                 combined_image.paste(original_img, (0, 30))
                 combined_image.paste(trimap_img, (224, 30))
                 combined_image.paste(mask_img, (224 * 2, 30))
                 combined_image.paste(cam_img, (224 * 3, 30))
 
-                # 添加标题
+                # add titles
                 draw = ImageDraw.Draw(combined_image)
                 try:
-                    # 尝试加载字体，如果失败则使用默认字体
+                    # Try loading font, fallback to default if fails
                     font = ImageFont.truetype("Arial", 18)
                 except IOError:
                     font = ImageFont.load_default()
 
-                # 绘制每个子图的标题
-                titles = ["Origin", "Trimap", "Predicted Mask", "CAM"]
+                # draw subtitles
+                titles = ["Original", "Trimap", "Predicted Mask", "CAM"]
                 for idx, title in enumerate(titles):
-                    # 计算文本位置使其居中
+                    # Calculate text position for center alignment
                     text_width = font.getbbox(title)[2] - font.getbbox(title)[0]
                     position = (idx * 224 + (224 - text_width) // 2, 5)
                     draw.text(position, title, fill=(0, 0, 0), font=font)
 
-                # 保存拼接后的图像
+                # save composited image
                 combined_image.save(
                     f"output_images/{folder_name}/combined_{image_ids[j]}.png"
                 )
 
-    # 保存训练集、验证集和测试集的图像
+
+    # save images for train, validation and test sets
     save_images(train_loader, "train")
     save_images(val_loader, "val")
     save_images(test_loader, "test")
 
-    print(f"所有图像已保存到 output_images 目录下的 train、val 和 test 子目录")
+    print("All images saved to train, val and test subdirectories under output_images")

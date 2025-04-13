@@ -6,13 +6,12 @@ from PIL import Image
 import numpy as np
 import torch
 from torch.utils.data import DataLoader, random_split
-from tqdm import tqdm
 
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../'))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from data.dataset import OxfordIIITPet
+from task1.data.dataset import OxfordIIITPet
 from models.unet import UNet
 from utils.loss import weighted_loss
 from utils.mask_utils import get_trimap
