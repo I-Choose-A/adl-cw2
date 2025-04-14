@@ -70,7 +70,7 @@ pip install -r requirements.txt
 Navigate to the `baseline` directory:
 
 ```bash
-cd basline
+cd baseline
 ```
 To train `unet` baseline model:
 ```bash
@@ -83,18 +83,6 @@ python train_deeplabv3.py
 ```
 
 
-### Task 2: Baseline Modles Testing
-
-Run:
-```bash
-python test_model.py
-```
-
-
-```bash
-python model1/train.py
-python model2/train.py
-```
 
 ### Task 2: `Resnet18` Training, `CAM` Generating and `unet` Training
 
