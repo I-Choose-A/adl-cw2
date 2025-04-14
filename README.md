@@ -5,13 +5,13 @@
 
 This coursework aims to explore weakly-supervised semantic segmentation by reducing the reliance on costly pixel-level annotations. We propose a pipeline that leverages image-level labels to train a classification model, from which Class Activation Maps (CAMs) are extracted and refined into pseudo-labels to supervise the training of a segmentation network.
 
-### MRP
+### Minimum Required Project(MRP)
 Question:
 How effective are CAM-based pseudo-labels generated from image-level annotations in training segmentation models, in comparison to fully-supervised pixel-level annotations?
 
 We evaluate the performance of segmentation models trained on CAM-derived masks against models trained with full supervision (e.g., UNet and DeepLabV3). To further analyze the pipeline, we also perform ablation studies on components of the pseudo-label generation process, including different ResNet architectures, CRF refinement, and multi-layer CAM fusion.
 
-### OEQ
+### Open-Ended Question(OEQ)
 Question:
 How do the quality and the type of weak annotations affect the performance of segmentation models?
 
@@ -102,7 +102,7 @@ As for `CAM`s, they are saved in `adl-cw2/weakly-supervised/data/CAM`.
 
 #### Step 1: Generate CAMs and Train Models
 
-Navigate to the `res_abla-and-OEQ directory:
+Navigate to the `resnet-ablation-and-OEQ` directory:
 ```bash
 cd resnet-ablation-and-OEQ
 ```
