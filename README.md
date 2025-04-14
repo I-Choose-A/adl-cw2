@@ -37,6 +37,10 @@ conda activate cw2
 pip install torch==2.5.0 torchvision --index-url https://download.pytorch.org/whl/cpu
 ```
 
+安装pandas tdqm和kornia
+```bash
+pip install -r requirements.txt
+```
 
 对于每个task，先进入该task的工作目录：
 
