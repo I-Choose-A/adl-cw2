@@ -3,8 +3,19 @@
 
 ## Introduction
 
-This coursework aims to 
+This coursework aims to explore weakly-supervised semantic segmentation by reducing the reliance on costly pixel-level annotations. We propose a pipeline that leverages image-level labels to train a classification model, from which Class Activation Maps (CAMs) are extracted and refined into pseudo-labels to supervise the training of a segmentation network.
 
+### MRP
+Question:
+How effective are CAM-based pseudo-labels generated from image-level annotations in training segmentation models, in comparison to fully-supervised pixel-level annotations?
+
+We evaluate the performance of segmentation models trained on CAM-derived masks against models trained with full supervision (e.g., UNet and DeepLabV3). To further analyze the pipeline, we also perform ablation studies on components of the pseudo-label generation process, including different ResNet architectures, CRF refinement, and multi-layer CAM fusion.
+
+### OEQ
+Question:
+How do the quality and the type of weak annotations affect the performance of segmentation models?
+
+To explore annotation quality, we introduce controlled levels of noise into pseudo-labels. To study the type of weak supervision, we assess the effect of incorporating bounding box constraints into the CAM generation process. These experiments reveal the robustness and sensitivity of segmentation models to different forms of weak labels.
 
 ## Setup Instructions
 
@@ -103,9 +114,9 @@ As for `CAM`s, they are saved in `adl-cw2/weakly-supervised/data/CAM`.
 
 #### Step 1: Generate CAMs and Train Models
 
-Navigate to the `abalation-and-OEQ` directory:
+Navigate to the `res_abla-and-OEQ directory:
 ```bash
-cd open-question
+cd res_abla-and-OEQ
 ```
 
 Then, generate the bounding box information:
