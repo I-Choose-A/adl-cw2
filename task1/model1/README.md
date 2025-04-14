@@ -1,1 +1,0 @@
-Test loss: 0.0068, Test IoU: 0.6931

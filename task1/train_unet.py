@@ -18,7 +18,6 @@ from utils.loss import weighted_loss
 from utils.mask_utils import get_trimap
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-print("Using device:", device)
 torch.manual_seed(2025)
 batch_size = 32
 
@@ -39,7 +38,7 @@ unet = UNet()
 
 def train_unet_supervised(model):
     tqdm.write("Start training fully supervised UNet...")
-    epochs = 10
+    epochs = 1
     optimizer = torch.optim.Adam(params=model.parameters(), lr=1e-4, weight_decay=1e-6)
     model = model.to(device)
 
@@ -90,7 +89,7 @@ def train_unet_supervised(model):
         tqdm.write(f"EPOCH: {epoch + 1}/{epochs}, train_loss: {train_loss:.4f}, "
                    f"val_loss: {val_loss:.4f}, val_iou: {val_iou:.4f}")
 
-    torch.save(model.state_dict(), "task1/model1/models/unet_supervised.pth")
+    torch.save(model.state_dict(), "models/unet_supervised.pth")
 
 
 def denormalize(tensor, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]):
@@ -155,9 +154,9 @@ def test_unet(model):
 
 
 if __name__ == '__main__':
-    if not os.path.exists("task1/model1/models/unet_supervised.pth"):
+    if not os.path.exists("models/unet_supervised.pth"):
         train_unet_supervised(unet)
     else:
-        unet.load_state_dict(torch.load("task1/model1/models/unet_supervised.pth", weights_only=True))
+        unet.load_state_dict(torch.load("models/unet_supervised.pth", weights_only=True))
 
     test_unet(unet)
