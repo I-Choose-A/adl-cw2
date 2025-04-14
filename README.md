@@ -3,7 +3,7 @@
 
 ## Introduction
 
-This coursework
+This coursework aims to 
 
 
 ## Setup Instructions
@@ -55,14 +55,37 @@ pip install -r requirements.txt
 
 ## Running the Tasks
 
-### Task 1: Model Evaluation
-Navigate to the task1 directory and run the two models:
+### Task 1: Baseline Models Training
+Navigate to the `baseline` directory:
+
+```bash
+cd basline
+```
+To train `unet` baseline model:
+```bash
+python train_unet.py
+```
+
+To train `deeplabv3` baseline model:
+```bash
+python train_deeplabv3.py
+```
+
+
+### Task 2: Baseline Modles Testing
+
+Run:
+```bash
+python test_model.py
+```
+
+
 ```bash
 python model1/train.py
 python model2/train.py
 ```
 
-### Task 2: `Resnet18` training, `CAM` generating and `unet` training
+### Task 2: `Resnet18` Training, `CAM` Generating and `unet` Training
 
 
 Navigate to the `weakly-supervised` directory and run:
@@ -80,7 +103,7 @@ As for `CAM`s, they are saved in `adl-cw2/weakly-supervised/data/CAM`.
 
 #### Step 1: Generate CAMs and Train Models
 
-Navigate to the `open-question` directory:
+Navigate to the `abalation-and-OEQ` directory:
 ```bash
 cd open-question
 ```
