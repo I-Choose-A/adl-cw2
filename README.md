@@ -116,7 +116,7 @@ As for `CAM`s, they are saved in `adl-cw2/weakly-supervised/data/CAM`.
 
 Navigate to the `res_abla-and-OEQ directory:
 ```bash
-cd res_abla-and-OEQ
+cd resnet-ablation-and-OEQ
 ```
 
 Then, generate the bounding box information:
