@@ -62,18 +62,30 @@ python model1/train.py
 python model2/train.py
 ```
 
-### Task 2: Model Training
-Navigate to the task2 directory and run:
+### Task 2: `Resnet18` training, `CAM` generating and `unet` training
+
+
+Navigate to the `weakly-supervised` directory and run:
 ```bash
-cd task2
+cd weakly-supervised
 python train.py
 ```
+
+It takes some time, after finishing, see the output images in `output-images` directory. `IOU` and `loss` value are showed on terminal.
+
+As for `CAM`s, they are saved in `adl-cw2/weakly-supervised/data/CAM`.
+
 
 ### Task 3: CAM Generation and Evaluation
 
 #### Step 1: Generate CAMs and Train Models
 
-First, generate the bounding box information:
+Navigate to the `open-question` directory:
+```bash
+cd open-question
+```
+
+Then, generate the bounding box information:
 ```bash
 python data/make_bbox.py
 ```
@@ -85,9 +97,7 @@ python merged_train_bbox.py
 
 Note: The entire process can take more than 30 minutes as it involves training ResNet50, generating CAMs, and training UNet models with and without bounding box annotations.
 
-To skip CAM generation, you can copy precomputed CAMs:
-1. Copy from `ADL-CW2/data/CAM` to `task3/data/`
-2. Run:
+To generate CAM, you can run:
 ```bash
 python merged_train_bbox.py
 ```
