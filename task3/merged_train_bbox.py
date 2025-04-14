@@ -1,4 +1,4 @@
-# ======== 设置与导入 ========
+# ======== Setup and Imports ========
 import os
 import datetime
 import numpy as np
@@ -21,6 +21,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 torch.manual_seed(2025)
 batch_size = 32
 
+
 # ======== utility functions========
 def denormalize(tensor, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]):
     tensor = tensor.clone()
@@ -29,9 +30,11 @@ def denormalize(tensor, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]):
     tensor.mul_(std).add_(mean)
     return tensor.clamp_(0, 1)
 
+
 def custom_collate_fn(batch):
     images, labels, image_ids, bboxes = zip(*batch)
     return torch.stack(images), torch.tensor(labels), list(image_ids), list(bboxes)
+
 
 class NoBBoxWrapper(torch.utils.data.Dataset):
     def __init__(self, dataset):
@@ -44,6 +47,7 @@ class NoBBoxWrapper(torch.utils.data.Dataset):
         image, label, image_id, _ = self.dataset[idx]
         return image, label, image_id
 
+
 # ======== model training ========
 def train_classifier(model):
     epochs = 20
@@ -55,7 +59,7 @@ def train_classifier(model):
 
     for epoch in range(epochs):
         model.train()
-        total_loss, total_correct = 0., 0.
+        total_loss, total_correct = 0.0, 0.0
         for x, y, _ in train_loader_classifier:
             x, y = x.to(device), y.to(device)
             optimizer.zero_grad()
@@ -69,8 +73,8 @@ def train_classifier(model):
 
         # ========== val ========== #
         model.eval()
-        val_correct = 0.
-        val_loss = 0.
+        val_correct = 0.0
+        val_loss = 0.0
         with torch.no_grad():
             for x, y, _ in val_loader_classifier:
                 x, y = x.to(device), y.to(device)
@@ -80,7 +84,9 @@ def train_classifier(model):
         val_acc = val_correct / len(val_dataset)
         val_loss /= len(val_dataset)
 
-        print(f"[Classifier] Epoch {epoch+1} | Train Acc={train_acc*100:.2f}% | Val Acc={val_acc*100:.2f}%")
+        print(
+            f"[Classifier] Epoch {epoch+1} | Train Acc={train_acc*100:.2f}% | Val Acc={val_acc*100:.2f}%"
+        )
 
         # save best model
         if val_acc > best_acc:
@@ -88,6 +94,7 @@ def train_classifier(model):
             torch.save(model.state_dict(), "models/best_resnet18.pth")
 
     torch.save(model.state_dict(), "models/resnet18.pth")
+
 
 def train_unet(model, use_bbox=True, model_name="unet_bbox.pth"):
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-5)
@@ -98,7 +105,7 @@ def train_unet(model, use_bbox=True, model_name="unet_bbox.pth"):
 
     for epoch in range(epochs):
         model.train()
-        running_loss = 0.
+        running_loss = 0.0
         for i, (x, _, image_ids, bboxes) in enumerate(tqdm(train_loader)):
             x = x.to(device)
             cam = get_cam(image_ids).to(device)
@@ -111,7 +118,7 @@ def train_unet(model, use_bbox=True, model_name="unet_bbox.pth"):
                         xmin, ymin, xmax, ymax = map(int, bbox)
                         if 0 <= xmin < xmax <= W and 0 <= ymin < ymax <= H:
                             mask = torch.zeros((H, W), device=device)
-                            mask[ymin:ymax, xmin:xmax] = 1.
+                            mask[ymin:ymax, xmin:xmax] = 1.0
                             cam[j, 0] = cam[j, 0].float() * mask
 
             mask = (cam > 0.3).float()
@@ -141,7 +148,9 @@ def train_unet(model, use_bbox=True, model_name="unet_bbox.pth"):
         val_loss /= len(val_dataset)
         val_iou /= len(val_dataset)
 
-        print(f"[{model_name}] Epoch {epoch+1} | TrainLoss={running_loss/len(train_loader):.4f} | ValLoss={val_loss:.4f} | ValIoU={val_iou:.4f}")
+        print(
+            f"[{model_name}] Epoch {epoch+1} | TrainLoss={running_loss/len(train_loader):.4f} | ValLoss={val_loss:.4f} | ValIoU={val_iou:.4f}"
+        )
 
         # save best model
         if val_iou > best_iou:
@@ -151,19 +160,20 @@ def train_unet(model, use_bbox=True, model_name="unet_bbox.pth"):
 
     torch.save(model.state_dict(), f"models/{model_name}")
 
+
 # ======== model evaluate ========
 def evaluate_unet(model, loader, label=""):
     model.eval()
     model.to(device)
-    total_iou, total_loss = 0., 0.
-    cam_iou, bbox_cam_iou = 0., 0.
+    total_iou, total_loss = 0.0, 0.0
+    cam_iou, bbox_cam_iou = 0.0, 0.0
 
     with torch.no_grad():
         for x, _, image_ids, bboxes in tqdm(loader):
             x = x.to(device)
             trimap = get_trimap(image_ids).to(device)
 
-            # 模型预测
+            # Model prediction
             pred = model(x)
             loss = weighted_loss(pred, trimap)
             total_loss += loss.item()
@@ -173,13 +183,19 @@ def evaluate_unet(model, loader, label=""):
             union = (pred_bin + trimap).clamp(0, 1).sum((1, 2, 3))
             total_iou += (intersection / (union + 1e-6)).sum().item()
 
-            # 原始 CAM
+            # Original CAM
             cam = get_cam(image_ids).to(device)
             cam_bin = (cam > 0.3).float()
-            cam_iou += ((cam_bin * trimap).sum((1, 2, 3)) /
-                        ((cam_bin + trimap).clamp(0, 1).sum((1, 2, 3)) + 1e-6)).sum().item()
+            cam_iou += (
+                (
+                    (cam_bin * trimap).sum((1, 2, 3))
+                    / ((cam_bin + trimap).clamp(0, 1).sum((1, 2, 3)) + 1e-6)
+                )
+                .sum()
+                .item()
+            )
 
-            # 加 bbox 的 CAM
+            # CAM with bbox
             masked_cam = cam.clone()
             _, _, H, W = masked_cam.shape
             for i in range(masked_cam.shape[0]):
@@ -191,14 +207,21 @@ def evaluate_unet(model, loader, label=""):
                         mask[ymin:ymax, xmin:xmax] = 1.0
                         masked_cam[i, 0] = masked_cam[i, 0].float() * mask
             masked_bin = (masked_cam > 0.3).float()
-            bbox_cam_iou += ((masked_bin * trimap).sum((1, 2, 3)) /
-                             ((masked_bin + trimap).clamp(0, 1).sum((1, 2, 3)) + 1e-6)).sum().item()
+            bbox_cam_iou += (
+                (
+                    (masked_bin * trimap).sum((1, 2, 3))
+                    / ((masked_bin + trimap).clamp(0, 1).sum((1, 2, 3)) + 1e-6)
+                )
+                .sum()
+                .item()
+            )
 
     n = len(loader.dataset)
-    print(f"[{label}] Test Loss={total_loss/n:.4f}, IoU={total_iou/n:.4f}, "
-          f"CAM-IoU={cam_iou/n:.4f}, BBox-CAM-IoU={bbox_cam_iou/n:.4f}")
+    print(
+        f"[{label}] Test Loss={total_loss/n:.4f}, IoU={total_iou/n:.4f}, "
+        f"CAM-IoU={cam_iou/n:.4f}, BBox-CAM-IoU={bbox_cam_iou/n:.4f}"
+    )
 
-    
 
 if __name__ == "__main__":
     # ======== data loaders ========
@@ -206,15 +229,27 @@ if __name__ == "__main__":
     train_size = int(len(dataset) * 0.8)
     val_size = int(len(dataset) * 0.1)
     test_size = len(dataset) - train_size - val_size
-    train_dataset, val_dataset, test_dataset = random_split(dataset, [train_size, val_size, test_size])
-    
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=custom_collate_fn)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate_fn)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate_fn)
+    train_dataset, val_dataset, test_dataset = random_split(
+        dataset, [train_size, val_size, test_size]
+    )
 
-    train_loader_classifier = DataLoader(NoBBoxWrapper(train_dataset), batch_size=batch_size, shuffle=True)
-    val_loader_classifier = DataLoader(NoBBoxWrapper(val_dataset), batch_size=batch_size, shuffle=False)
-    
+    train_loader = DataLoader(
+        train_dataset, batch_size=batch_size, shuffle=True, collate_fn=custom_collate_fn
+    )
+    val_loader = DataLoader(
+        val_dataset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate_fn
+    )
+    test_loader = DataLoader(
+        test_dataset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate_fn
+    )
+
+    train_loader_classifier = DataLoader(
+        NoBBoxWrapper(train_dataset), batch_size=batch_size, shuffle=True
+    )
+    val_loader_classifier = DataLoader(
+        NoBBoxWrapper(val_dataset), batch_size=batch_size, shuffle=False
+    )
+
     resnet = ResNet50
     unet_bbox = UNet()
     unet_nobbox = UNet()
@@ -226,7 +261,9 @@ if __name__ == "__main__":
 
     if not os.path.exists("data/CAM"):
         for loader in [train_loader, val_loader, test_loader]:
-            for x, y, ids in DataLoader(NoBBoxWrapper(loader.dataset), batch_size=batch_size):
+            for x, y, ids in DataLoader(
+                NoBBoxWrapper(loader.dataset), batch_size=batch_size
+            ):
                 create_cam(resnet, x.to(device), y.to(device), ids)
 
     if not os.path.exists("models/unet_bbox.pth"):
@@ -243,15 +280,18 @@ if __name__ == "__main__":
 
     if os.path.exists("models/best_unet_bbox.pth"):
         best_unet_bbox = UNet().to(device)
-        best_unet_bbox.load_state_dict(torch.load("models/best_unet_bbox.pth", map_location=device))
+        best_unet_bbox.load_state_dict(
+            torch.load("models/best_unet_bbox.pth", map_location=device)
+        )
         evaluate_unet(best_unet_bbox, test_loader, label="BBox (Best)")
     else:
         print("best_unet_bbox.pth not found.")
 
     if os.path.exists("models/best_unet_nobbox.pth"):
         best_unet_nobbox = UNet().to(device)
-        best_unet_nobbox.load_state_dict(torch.load("models/best_unet_nobbox.pth", map_location=device))
+        best_unet_nobbox.load_state_dict(
+            torch.load("models/best_unet_nobbox.pth", map_location=device)
+        )
         evaluate_unet(best_unet_nobbox, test_loader, label="NoBBox (Best)")
     else:
         print("best_unet_nobbox.pth not found.")
-        
