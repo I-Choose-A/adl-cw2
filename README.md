@@ -1,63 +1,105 @@
-# 测试方法：
+# Applied Deep Learning Coursework 2
 
-首先先下载数据集：
+
+## Introduction
+
+This coursework
+
+
+## Setup Instructions
+
+### Dataset Preparation
+
+First, download the Oxford-IIIT Pet dataset:
 
 ```bash
 wget https://www.robots.ox.ac.uk/~vgg/data/pets/data/images.tar.gz
 ```
 
-然后解压：
+Extract the image files:
 ```bash
 mkdir -p images && tar -xzf images.tar.gz -C images --strip-components=1
 ```
 
-下载注释文件：
+Download annotation files:
 ```bash
 wget https://www.robots.ox.ac.uk/~vgg/data/pets/data/annotations.tar.gz
 ```
 
-解压注释文件：
+Extract annotation files:
 ```bash
 mkdir -p annotations && tar -xzf annotations.tar.gz -C annotations --strip-components=1
 ```
 
+### Environment Configuration
 
-其次创建一个新的虚拟环境，我们要测试一下到底要用哪些包：
+Create a new conda environment:
 ```bash
 conda create -n cw2 python=3.12 pip
 ```
 
-激活环境：
+Activate the environment:
 ```bash
 conda activate cw2
 ```
 
-安装老师要求的包：
+Install PyTorch as specified:
 ```bash
 pip install torch==2.5.0 torchvision --index-url https://download.pytorch.org/whl/cpu
 ```
 
-安装pandas tdqm和kornia
+Install additional dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-对于每个task，先进入该task的工作目录：
+## Running the Tasks
 
-例如：
-```bash
-cd task2
-```
-
-然后运行：
-```bash
-python train.py
-```
-
-对于task1的两个模型，运行：
+### Task 1: Model Evaluation
+Navigate to the task1 directory and run the two models:
 ```bash
 python model1/train.py
 python model2/train.py
 ```
 
-确保都能跑之后就可以
+### Task 2: Model Training
+Navigate to the task2 directory and run:
+```bash
+cd task2
+python train.py
+```
+
+### Task 3: CAM Generation and Evaluation
+
+#### Step 1: Generate CAMs and Train Models
+
+First, generate the bounding box information:
+```bash
+python data/make_bbox.py
+```
+
+Then train the models:
+```bash
+python merged_train_bbox.py
+```
+
+Note: The entire process can take more than 30 minutes as it involves training ResNet50, generating CAMs, and training UNet models with and without bounding box annotations.
+
+To skip CAM generation, you can copy precomputed CAMs:
+1. Copy from `ADL-CW2/data/CAM` to `task3/data/`
+2. Run:
+```bash
+python merged_train_bbox.py
+```
+
+#### Step 2: Compare Pseudo Labeling Quality
+After training, compare the effects of different quality pseudo labels:
+```bash
+python compare_different_quality.py
+```
+
+#### Step 3: Run Ablation Studies
+To view our ablation experiment results:
+```bash
+python run_cam_ablation.py
+```
