@@ -11,7 +11,7 @@ from task1.data.dataset import OxfordIIITPet
 from utils.loss import weighted_loss
 from utils.mask_utils import get_trimap
 
-device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 torch.manual_seed(2025)
 batch_size = 32
 
@@ -21,14 +21,34 @@ val_size = int(len(dataset) * 0.1)
 test_size = len(dataset) - train_size - val_size
 
 # The dataset is split in advance to ensure consistent batch ordering.
-train_dataset, val_dataset, test_dataset = random_split(dataset, [train_size, val_size, test_size])
+train_dataset, val_dataset, test_dataset = random_split(
+    dataset, [train_size, val_size, test_size]
+)
 
-train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True,
-                          persistent_workers=True)
-val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=4, pin_memory=True,
-                        persistent_workers=True)
-test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=4, pin_memory=True,
-                         persistent_workers=True)
+train_loader = DataLoader(
+    train_dataset,
+    batch_size=batch_size,
+    shuffle=True,
+    num_workers=4,
+    pin_memory=True,
+    persistent_workers=True,
+)
+val_loader = DataLoader(
+    val_dataset,
+    batch_size=batch_size,
+    shuffle=False,
+    num_workers=4,
+    pin_memory=True,
+    persistent_workers=True,
+)
+test_loader = DataLoader(
+    test_dataset,
+    batch_size=batch_size,
+    shuffle=False,
+    num_workers=4,
+    pin_memory=True,
+    persistent_workers=True,
+)
 
 deeplabv3 = DeepLabV3()
 
@@ -41,7 +61,7 @@ def train_deeplab(model):
     model = model.to(device)
 
     for epoch in range(epochs):
-        train_loss = 0.
+        train_loss = 0.0
         for i, (x, _, image_ids) in enumerate(train_loader):
             x = x.to(device)
             optimizer.zero_grad()
@@ -60,8 +80,8 @@ def train_deeplab(model):
 
         # evaluation on the validation set
         model.eval()
-        val_loss = 0.
-        val_iou = 0.
+        val_loss = 0.0
+        val_iou = 0.0
         for x, _, image_ids in val_loader:
             x = x.to(device)
             trimap = get_trimap(image_ids).to(device)
@@ -80,8 +100,10 @@ def train_deeplab(model):
         val_loss /= len(val_dataset)
         val_iou /= len(val_dataset)
 
-        print(f"EPOCH: {epoch + 1}/{epochs}, train_loss: {train_loss}, val_loss: {val_loss}, "
-              f"val_iou: {val_iou}, {datetime.datetime.now()}")
+        print(
+            f"EPOCH: {epoch + 1}/{epochs}, train_loss: {train_loss}, val_loss: {val_loss}, "
+            f"val_iou: {val_iou}, {datetime.datetime.now()}"
+        )
         model.train()
 
     torch.save(model.state_dict(), "models/deeplabv3.pth")
@@ -95,7 +117,7 @@ def denormalize(tensor, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]):
     return tensor.clamp_(0, 1)  # clip to [0,1]
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     # clear cache to provide more space for training DeepLabV3
     if not os.path.exists("models/deeplabv3.pth"):
         train_deeplab(deeplabv3)
@@ -106,8 +128,8 @@ if __name__ == '__main__':
     deeplabv3.eval()
     deeplabv3 = deeplabv3.to(device)
 
-    test_loss = 0.
-    test_iou = 0.
+    test_loss = 0.0
+    test_iou = 0.0
     for x, _, image_ids in test_loader:
         x = x.to(device)
         trimap = get_trimap(image_ids).to(device)
@@ -133,7 +155,7 @@ if __name__ == '__main__':
     for i, (x, y, image_ids) in enumerate(test_loader):
         x = x.to(device)
 
-        x_denorm = denormalize(x[0].unsqueeze(0).to('cpu'))
+        x_denorm = denormalize(x[0].unsqueeze(0).to("cpu"))
         image_np = x_denorm.squeeze(0).permute(1, 2, 0).numpy()
         image_uint8 = (image_np * 255).astype(np.uint8)
         pred_pil = Image.fromarray(image_uint8)
@@ -141,19 +163,25 @@ if __name__ == '__main__':
 
         trimap = get_trimap(image_ids)
         binary_image = (trimap[0].squeeze(0) > 0.5).float() * 255
-        pil_image = Image.fromarray(binary_image.to('cpu').numpy().astype(np.uint8), mode='L')
+        pil_image = Image.fromarray(
+            binary_image.to("cpu").numpy().astype(np.uint8), mode="L"
+        )
         pil_image.show()
 
         with torch.no_grad():
             pred_mask = deeplabv3(x)
 
         binary_image = (pred_mask[0].squeeze(0) > 0.5).float() * 255
-        pil_image = Image.fromarray(binary_image.to('cpu').numpy().astype(np.uint8), mode='L')
+        pil_image = Image.fromarray(
+            binary_image.to("cpu").numpy().astype(np.uint8), mode="L"
+        )
         pil_image.show()
 
         cam = get_trimap(image_ids)  # Using ground truth trimap for visualization
         binary_image = cam[0].squeeze(0) * 255
-        pil_image = Image.fromarray(binary_image.to('cpu').numpy().astype(np.uint8), mode='L')
+        pil_image = Image.fromarray(
+            binary_image.to("cpu").numpy().astype(np.uint8), mode="L"
+        )
         pil_image.show()
 
         break

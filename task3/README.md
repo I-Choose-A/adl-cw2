@@ -5,9 +5,14 @@
 Run the following script to generate CAMs and train the model:
 
 ```bash
+python data/make_bbox.py
+```
+First run the make_bbox.py file in the data folder. This will generate the bounding box information for merged_train_bbox.py.
+
+```bash
 python merged_train_bbox.py
 ```
-This process can take over 30 minutes.To skip CAM generation, you can copy the precomputed CAMs from ADL-CW2/data/CAM to task3/data/ and then run merged_train_bbox.py, then run
+The entire process can take more than 30 minutes, as it involves training ResNet50, generating CAMs, and training UNet models both with and without bounding box annotations. To skip CAM generation, you can copy the precomputed CAMs from ADL-CW2/data/CAM to task3/data/ and then run merged_train_bbox.py, then run
 
 ```bash
 python merged_train_bbox.py
